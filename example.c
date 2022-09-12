@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 struct e2device { int fd; };
@@ -10,6 +11,40 @@ static int
 e2b_read(struct e2device *dev, void *buf, size_t len, size_t off)
 {
 	return pread(dev->fd, buf, len, off);
+}
+
+#define TREE_HEADER "inode  perms size    name\n"
+
+static void
+tree(struct ext2 *fs, uint32_t inode_n, const char *name)
+{
+	struct ext2d_inode inode;
+	if (ext2_readinode(fs, inode_n, &inode, sizeof inode) < 0) {
+		fprintf(stderr, "couldn't read inode %u\n", inode_n);
+		return;
+	}
+	printf("%5u %6.3o %6u  %s\n", inode_n, inode.perms, inode.size_lower, *name ? name : "/");
+	int type = (inode.perms >> 12) & 0xF;
+	if (type == 0x4) {
+		size_t mynamelen = strlen(name) + 1;
+		char *namebuf = malloc(mynamelen + 256 + 1);
+		char *suffix = namebuf + mynamelen;
+		memcpy(namebuf, name, mynamelen);
+		namebuf[mynamelen - 1] = '/';
+		for (struct ext2_diriter iter = {0}; ext2_diriter(&iter, fs, &inode); ) {
+			memcpy(suffix, iter.ent->name, iter.ent->namelen_upper);
+			suffix[iter.ent->namelen_upper] = '\0';
+			if (strcmp(suffix, ".") == 0 || strcmp(suffix, "..") == 0) continue;
+			tree(fs, iter.ent->inode, namebuf);
+		}
+		free(namebuf);
+	} else if (type == 0x8) {
+		char buf[512];
+		int len = ext2_read(fs, &inode, buf, sizeof buf, 0);
+		printf("%.*s", len, buf);
+	} else {
+		printf("(unknown type)\n");
+	}
 }
 
 int
@@ -43,14 +78,6 @@ main(int argc, char **argv)
 			fs->bgdt[i].blocks_free, fs->bgdt[i].inodes_free, fs->bgdt[i].directory_amt);
 	}
 
-	struct ext2d_inode root;
-	if (ext2_readinode(fs, 2, &root, sizeof root) < 0) {
-		fprintf(stderr, "couldn't read root inode\n");
-		exit(1);
-	}
-	printf("root perms: %05o\n", root.perms);
-
-	for (struct ext2_diriter iter = {0}; ext2_diriter(&iter, fs, &root); ) {
-		printf("/%.*s\n", iter.ent->namelen_upper, iter.ent->name);
-	}
+	printf(TREE_HEADER);
+	tree(fs, 2, "");
 }
