@@ -20,17 +20,14 @@ ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
 }
 
 int
-ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off)
+ext2_read(struct ext2 *fs, struct ext2d_inode *inode, void *buf, size_t len, size_t off)
 {
-	struct ext2d_inode inode;
-	if (ext2_readinode(fs, inode_n, &inode, sizeof inode) < 0)
-		return -1;
 	if (len > INT_MAX)
 		len = INT_MAX;
-	if (off >= inode.size_lower)
+	if (len > inode->size_lower - off)
+		len = inode->size_lower - off;
+	if (off >= inode->size_lower)
 		return 0;
-	if (len > inode.size_lower - off)
-		len = inode.size_lower - off;
 
 	size_t pos = 0;
 	while (pos < len) {
@@ -43,7 +40,7 @@ ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off)
 
 		// TODO indirect blocks
 		if (block >= 12) return -1;
-		block = inode.block[block];
+		block = inode->block[block];
 		if (fs->read(fs->dev, buf + pos, block_len, block * fs->block_size + block_off) != (int)block_len)
 			return -1;
 		pos += block_len;
@@ -52,39 +49,30 @@ ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off)
 }
 
 bool
-ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n)
+ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, struct ext2d_inode *inode)
 {
 #define iter_int iter->_internal
-	if (fs == NULL || inode_n == 0) {
-		iter_int.fs = NULL;
+	if (inode == NULL) {
 		iter_int.needs_reset = false;
+		iter_int.pos = 0;
 		return false;
 	}
 	if (iter_int.needs_reset)
 		return false;
 
-	if (iter_int.fs != fs || iter_int.inode_n != inode_n) {
-		iter_int.fs = fs;
-		iter_int.pos = 0;
-		iter_int.inode_n = inode_n;
-		if (ext2_readinode(fs, inode_n, &iter_int.inode, sizeof iter_int.inode) < 0)
-			goto finish;
-	}
-
-	struct ext2d_dirent *ent = (void*)iter_int.buf;
 	for (;;) {
-		size_t len = ext2_read(fs, inode_n, iter_int.buf, sizeof iter_int.buf, iter_int.pos);
+		size_t len = ext2_read(fs, inode, iter_int.buf, sizeof iter_int.buf, iter_int.pos);
+		struct ext2d_dirent *ent = (void*)iter_int.buf;
 		/* accessing possibly uninitialized fields of ent doesn't matter here */
 		iter_int.pos += ent->size;
-		if (len < sizeof(*ent) + ent->namelen_upper) goto finish;
+		if (len < sizeof(*ent) + ent->namelen_upper) {
+			iter_int.needs_reset = true;
+			return false;
+		}
 		if (ent->inode > 0) {
 			iter->ent = ent;
 			return true;
 		}
 	}
-
-finish:
-	iter_int.needs_reset = true;
-	return false;
 #undef iter_int
 }

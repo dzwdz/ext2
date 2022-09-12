@@ -24,10 +24,7 @@ struct ext2_diriter {
 
 	struct {
 		bool needs_reset;
-		struct ext2 *fs;
 		size_t pos;
-		uint32_t inode_n;
-		struct ext2d_inode inode;
 		/* if you're wondering what the fuck that is - i was trying to make this
 		 * struct have no external allocations, so it wouldn't need to be manually freed.
 		 * in hindsight, that might've not been too smart*/
@@ -41,5 +38,5 @@ void ext2_free(struct ext2 *fs);
 
 /* read.c */
 int ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len);
-int ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off);
-bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n);
+int ext2_read(struct ext2 *fs, struct ext2d_inode *inode, void *buf, size_t len, size_t off);
+bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, struct ext2d_inode *inode);

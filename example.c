@@ -49,14 +49,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	printf("root perms: %05o\n", root.perms);
-	char buf[512];
-	int len;
-	if ((len = ext2_read(fs, 2, &buf, sizeof buf, 0x20)) < 0) {
-		fprintf(stderr, "couldn't read root\n");
-		exit(1);
-	}
 
-	for (struct ext2_diriter iter = {0}; ext2_diriter(&iter, fs, 2); ) {
+	for (struct ext2_diriter iter = {0}; ext2_diriter(&iter, fs, &root); ) {
 		printf("/%.*s\n", iter.ent->namelen_upper, iter.ent->name);
 	}
 }
