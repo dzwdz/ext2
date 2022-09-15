@@ -1,6 +1,7 @@
 #include "ext2.h"
 #include <limits.h>
 #include <stddef.h>
+#include <string.h>
 
 int
 ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
@@ -75,4 +76,40 @@ ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, struct ext2d_inode *ino
 		}
 	}
 #undef iter_int
+}
+
+uint32_t
+ext2c_walk(struct ext2 *fs, const char *path, size_t plen)
+{
+	if (plen < 1 || path[0] != '/') return 0;
+	path++; plen--;
+
+	struct ext2d_inode inode;
+	struct ext2_diriter iter;
+	uint32_t inode_n = 2;
+
+	while (plen) {
+		char *slash = memchr(path, '/', plen);
+		size_t seglen = slash ? (size_t)(slash - path) : plen;
+
+		// TODO allow the user to supply caching functions
+		if (ext2_readinode(fs, inode_n, &inode, sizeof inode) < 0)
+			return 0;
+
+		inode_n = 0;
+		ext2_diriter(&iter, NULL, 0);
+		while (inode_n == 0 && ext2_diriter(&iter, fs, &inode)) {
+			if (iter.ent->namelen_upper == seglen &&
+				memcmp(iter.ent->name, path, seglen) == 0)
+			{
+				inode_n = iter.ent->inode;
+			}
+		}
+		if (inode_n == 0)
+			return 0;
+		if (seglen < plen) seglen++;
+		path += seglen;
+		plen -= seglen;
+	}
+	return inode_n;
 }

@@ -40,3 +40,5 @@ void ext2_free(struct ext2 *fs);
 int ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len);
 int ext2_read(struct ext2 *fs, struct ext2d_inode *inode, void *buf, size_t len, size_t off);
 bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, struct ext2d_inode *inode);
+
+uint32_t ext2c_walk(struct ext2 *fs, const char *path, size_t plen);

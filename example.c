@@ -79,5 +79,16 @@ main(int argc, char **argv)
 	}
 
 	printf(TREE_HEADER);
-	tree(fs, 2, "");
+	if (argc < 3) {
+		tree(fs, 2, "");
+	}
+	for (int arg = 2; arg < argc; arg++) {
+		const char *path = argv[arg];
+		uint32_t n = ext2c_walk(fs, path, strlen(path));
+		if (!n) {
+			printf("%s not found\n", path);
+			continue;
+		}
+		tree(fs, n, path);
+	}
 }
