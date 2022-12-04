@@ -21,10 +21,33 @@ ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
 }
 
 int
+ext2_inode_ondisk(struct ext2 *fs, struct ext2d_inode *inode, size_t pos, size_t *dev_off, size_t *dev_len)
+{
+	// TODO 64-bit size
+	if (pos >= inode->size_lower) {
+		return -1;
+	}
+
+	// TODO unnecessary division by power of 2
+	uint64_t block     = pos / fs->block_size;
+	uint64_t block_off = pos % fs->block_size;
+	if (block >= 12) {
+		// TODO indirect blocks
+		return -1;
+	}
+	block = inode->block[block];
+	*dev_off = block * fs->block_size + block_off;
+	// TODO try to return as big of a block as possible
+	*dev_len = fs->block_size - block_off;
+	return 0;
+}
+
+int
 ext2_read(struct ext2 *fs, struct ext2d_inode *inode, void *buf, size_t len, size_t off)
 {
 	if (len > INT_MAX)
 		len = INT_MAX;
+	// TODO 64-bit size
 	if (len > inode->size_lower - off)
 		len = inode->size_lower - off;
 	if (off >= inode->size_lower)
@@ -32,19 +55,17 @@ ext2_read(struct ext2 *fs, struct ext2d_inode *inode, void *buf, size_t len, siz
 
 	size_t pos = 0;
 	while (pos < len) {
-		// TODO unnecessary division by power of 2
-		uint64_t block     = (off + pos) / fs->block_size;
-		uint64_t block_off = (off + pos) % fs->block_size;
-		uint64_t block_len = fs->block_size - block_off;
-		if (block_len > len - pos)
-			block_len = len - pos;
-
-		// TODO indirect blocks
-		if (block >= 12) return -1;
-		block = inode->block[block];
-		if (fs->read(fs->dev, buf + pos, block_len, block * fs->block_size + block_off) != (int)block_len)
+		uint64_t dev_off, dev_len;
+		if (ext2_inode_ondisk(fs, inode, off + pos, &dev_off, &dev_len) < 0) {
 			return -1;
-		pos += block_len;
+		}
+		if (dev_len > len - pos) {
+			dev_len = len - pos;
+		}
+		if (fs->read(fs->dev, buf + pos, dev_len, dev_off) != (int)dev_len) {
+			return -1;
+		}
+		pos += dev_len;
 	}
 	return pos;
 }
