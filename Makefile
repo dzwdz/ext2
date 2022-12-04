@@ -1,6 +1,6 @@
 .POSIX:
 CFLAGS = -Wall -Wextra -Werror
-OBJ := opendev.o read.o
+OBJ := opendev.o read.o write.o
 
 libext2.a: ${OBJ}
 	rm -f $@

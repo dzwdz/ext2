@@ -13,6 +13,12 @@ e2b_read(struct e2device *dev, void *buf, size_t len, size_t off)
 	return pread(dev->fd, buf, len, off);
 }
 
+static int
+e2b_write(struct e2device *dev, const void *buf, size_t len, size_t off)
+{
+	return pwrite(dev->fd, buf, len, off);
+}
+
 #define TREE_HEADER "inode  perms size    name\n"
 
 static void
@@ -58,7 +64,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	struct ext2 *fs = ext2_opendev(&dev, e2b_read);
+	struct ext2 *fs = ext2_opendev(&dev, e2b_read, e2b_write);
 	if (!fs) {
 		fprintf(stderr, "ext2_opendev failed\n");
 		exit(1);
@@ -84,11 +90,40 @@ main(int argc, char **argv)
 	}
 	for (int arg = 2; arg < argc; arg++) {
 		const char *path = argv[arg];
-		uint32_t n = ext2c_walk(fs, path, strlen(path));
-		if (!n) {
-			printf("%s not found\n", path);
-			continue;
+		uint32_t n;
+		if (path[0] == '+')  { /* write some stuff to the file */
+			int count = 0;
+			for (; *path == '+'; path++) count++;
+			n = ext2c_walk(fs, path, strlen(path));
+			if (!n) {
+				printf("creating files not implemented yet\n");
+				continue;
+			}
+
+			struct ext2d_inode inode;
+			if (ext2_readinode(fs, n, &inode, sizeof inode) < 0) {
+				fprintf(stderr, "couldn't read inode %u\n", n);
+				continue;
+			}
+			for (int i = 0; i < count; i++) {
+				const char *s = "I can eat glass and it doesn't hurt me.\n";
+				if (ext2_write(fs, &inode, s, strlen(s), i * strlen(s)) <= 0) {
+					fprintf(stderr, "write error :(\n");
+					break;
+				}
+			}
+			if (ext2_writeinode(fs, n, &inode) < 0) {
+				fprintf(stderr, "couldn't save inode %u\n", n);
+				// TODO mark fs as dirty
+			}
+			tree(fs, n, path);
+		} else { /* default: show tree at path */
+			n = ext2c_walk(fs, path, strlen(path));
+			if (!n) {
+				printf("%s not found\n", path);
+				continue;
+			}
+			tree(fs, n, path);
 		}
-		tree(fs, n, path);
 	}
 }

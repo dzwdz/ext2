@@ -6,13 +6,14 @@
 static int ext2_readbgdt(struct ext2 *fs);
 
 struct ext2 *
-ext2_opendev(struct e2device *dev, e2device_read read_fn)
+ext2_opendev(struct e2device *dev, e2device_read read_fn, e2device_write write_fn)
 {
 	struct ext2 *fs = malloc(sizeof *fs);
 	if (!fs) return NULL;
 	memset(fs, 0, sizeof *fs);
 	fs->dev = dev;
 	fs->read = read_fn;
+	fs->write = write_fn;
 
 	if (fs->read(fs->dev, &fs->super, sizeof fs->super, 1024) != sizeof fs->super)
 		goto err;
@@ -24,9 +25,9 @@ ext2_opendev(struct e2device *dev, e2device_read read_fn)
 	if (fs->super.features_ro & ~(EXT2D_FEATURE_RO_DIRTYPE))
 		goto err; /* unsupported mandatory feature */
 
-	fs->rw = true;
-	if (fs->super.features_rw)
-		fs->rw = false; /* unsupported write feature */
+	fs->rw = write_fn
+		&& fs->super.features_ro == EXT2D_FEATURE_RO_DIRTYPE
+		&& fs->super.features_rw == (EXT2D_FEATURE_RW_SPARSE_SUPER | EXT2D_FEATURE_RW_SIZE64);
 
 	uint32_t groups1, groups2;
 	groups1 = (fs->super.blocks_total + (fs->super.blocks_per_group - 1)) / fs->super.blocks_per_group;

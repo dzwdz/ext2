@@ -4,30 +4,35 @@
 #include <string.h>
 
 int
-ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
+ext2_inodepos(struct ext2 *fs, uint32_t inode)
 {
 	uint32_t group = (inode - 1) / fs->super.inodes_per_group;
 	uint32_t idx   = (inode - 1) % fs->super.inodes_per_group;
-	uint32_t off;
 	if (group >= fs->groups) return -1;
-	off  = fs->block_size * fs->bgdt[group].inode_table;
-	off += idx * fs->super.inode_size;
+	// TODO no overflow guard
+	// also, sketchy return type
+	return fs->block_size * fs->bgdt[group].inode_table + idx * fs->super.inode_size;
+}
 
-	if (len > fs->super.inode_size)
-		len = fs->super.inode_size;
-	if (fs->read(fs->dev, buf, len, off) != (int)len)
+int
+ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
+{
+	int off = ext2_inodepos(fs, inode);
+	if (off < 0) {
 		return -1;
+	}
+	if (len > fs->super.inode_size) {
+		len = fs->super.inode_size;
+	}
+	if (fs->read(fs->dev, buf, len, off) != (int)len) {
+		return -1;
+	}
 	return len;
 }
 
 int
 ext2_inode_ondisk(struct ext2 *fs, struct ext2d_inode *inode, size_t pos, size_t *dev_off, size_t *dev_len)
 {
-	// TODO 64-bit size
-	if (pos >= inode->size_lower) {
-		return -1;
-	}
-
 	// TODO unnecessary division by power of 2
 	uint64_t block     = pos / fs->block_size;
 	uint64_t block_off = pos % fs->block_size;
