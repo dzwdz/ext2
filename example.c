@@ -38,8 +38,8 @@ tree(struct ext2 *fs, uint32_t inode_n, const char *name)
 		memcpy(namebuf, name, mynamelen);
 		namebuf[mynamelen - 1] = '/';
 		for (struct ext2_diriter iter = {0}; ext2_diriter(&iter, fs, &inode); ) {
-			memcpy(suffix, iter.ent->name, iter.ent->namelen_upper);
-			suffix[iter.ent->namelen_upper] = '\0';
+			memcpy(suffix, iter.ent->name, iter.ent->namelen_lower);
+			suffix[iter.ent->namelen_lower] = '\0';
 			if (strcmp(suffix, ".") == 0 || strcmp(suffix, "..") == 0) continue;
 			tree(fs, iter.ent->inode, namebuf);
 		}

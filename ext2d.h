@@ -94,9 +94,9 @@ struct ext2d_inode {
 struct ext2d_dirent {
 	uint32_t inode;
 	uint16_t size;
-	uint8_t namelen_upper;
+	uint8_t namelen_lower;
 	union {
-		uint8_t namelen_lower, type;
+		uint8_t namelen_upper, type;
 	};
 	char name[];
 } __attribute__((__packed__));

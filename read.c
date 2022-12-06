@@ -92,7 +92,7 @@ ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, struct ext2d_inode *ino
 		struct ext2d_dirent *ent = (void*)iter_int.buf;
 		/* accessing possibly uninitialized fields of ent doesn't matter here */
 		iter_int.pos += ent->size;
-		if (len < sizeof(*ent) + ent->namelen_upper) {
+		if (len < sizeof(*ent) + ent->namelen_lower) {
 			iter_int.needs_reset = true;
 			return false;
 		}
@@ -125,7 +125,7 @@ ext2c_walk(struct ext2 *fs, const char *path, size_t plen)
 		inode_n = 0;
 		ext2_diriter(&iter, NULL, 0);
 		while (inode_n == 0 && ext2_diriter(&iter, fs, &inode)) {
-			if (iter.ent->namelen_upper == seglen &&
+			if (iter.ent->namelen_lower == seglen &&
 				memcmp(iter.ent->name, path, seglen) == 0)
 			{
 				inode_n = iter.ent->inode;
