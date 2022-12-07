@@ -53,7 +53,19 @@ tree(struct ext2 *fs, uint32_t inode_n, const char *name)
 	}
 }
 
-void
+static uint32_t
+splitdir(struct ext2 *fs, const char *path, char **name)
+{
+	const char *lastslash = strrchr(path, '/');
+	if (!lastslash) {
+		return 0;
+	}
+	uint32_t n = ext2c_walk(fs, path, lastslash - path);
+	*name = (void*)lastslash + 1;
+	return n;
+}
+
+static void
 e_link(struct ext2 *fs, uint32_t dir_n, uint32_t file_n, const char *name)
 {
 	struct ext2d_inode dir, file;
@@ -145,10 +157,26 @@ main(int argc, char **argv)
 				// TODO mark fs as dirty
 			}
 			tree(fs, n, path);
-		} else if (path[0] == ':') { /* add new link */
-			// TODO maybe add some actual parsing instead of hardcoding inodes
-			e_link(fs, 17, 13, path + 1);
-			tree(fs, 17, "/links");
+		} else if (strchr(path, ':')) { /* source:linktarget */
+			uint32_t src_n, target_n;
+			char *target, *name;
+			target = strchr(path, ':') + 1;
+			target[-1] = '\0';
+
+			target_n = splitdir(fs, target, &name);
+			if (!target_n) {
+				fprintf(stderr, "target directory doesn't exist\n");
+				continue;
+			}
+
+			src_n = ext2c_walk(fs, path, strlen(path));
+			if (!src_n) {
+				fprintf(stderr, "no such file\n");
+				continue;
+			}
+
+			e_link(fs, target_n, src_n, name);
+			tree(fs, target_n, target);
 		} else { /* default: show tree at path */
 			n = ext2c_walk(fs, path, strlen(path));
 			if (!n) {
