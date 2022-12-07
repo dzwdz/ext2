@@ -57,3 +57,6 @@ int ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size
 
 /* requires you to manually save the directory inode + manually update link count */
 int ext2_link(struct ext2 *fs, struct ext2d_inode *dir, const char *name, uint32_t inode_n, int flags);
+/** Removes a directory entry. Doesn't update the link count.
+ * @return the corresponding inode, 0 on failure */
+uint32_t ext2_unlink(struct ext2 *fs, struct ext2d_inode *dir, const char *name);

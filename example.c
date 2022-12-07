@@ -177,6 +177,38 @@ main(int argc, char **argv)
 
 			e_link(fs, target_n, src_n, name);
 			tree(fs, target_n, target);
+		} else if (strchr(path, '-')) { /* unlink */
+			struct ext2d_inode inode;
+			uint32_t dir_n, target_n;
+			char *name;
+			dir_n = splitdir(fs, path + 1, &name);
+			if (!dir_n) {
+				fprintf(stderr, "directory doesn't exist\n");
+				continue;
+			}
+			if (ext2_readinode(fs, dir_n, &inode, sizeof inode) < 0) {
+				fprintf(stderr, "couldn't read inode\n");
+				continue;
+			}
+			target_n = ext2_unlink(fs, &inode, name);
+			if (!target_n) {
+				fprintf(stderr, "deletion failed\n");
+				continue;
+			}
+			if (ext2_writeinode(fs, dir_n, &inode) < 0) {
+				fprintf(stderr, "couldn't write inode\n");
+				continue;
+			}
+			if (ext2_readinode(fs, target_n, &inode, sizeof inode) < 0) {
+				fprintf(stderr, "couldn't read inode\n");
+				continue;
+			}
+			// TODO fix BGD
+			inode.links--;
+			if (ext2_writeinode(fs, target_n, &inode) < 0) {
+				fprintf(stderr, "couldn't write inode\n");
+				continue;
+			}
 		} else { /* default: show tree at path */
 			n = ext2c_walk(fs, path, strlen(path));
 			if (!n) {

@@ -94,3 +94,27 @@ ext2_link(struct ext2 *fs, struct ext2d_inode *dir, const char *name, uint32_t i
 	}
 	return -1;
 }
+
+uint32_t
+ext2_unlink(struct ext2 *fs, struct ext2d_inode *dir, const char *name)
+{
+	char buf[1024];
+	size_t len = ext2_read(fs, dir, buf, sizeof buf, 0);
+	size_t namelen = strlen(name);
+	size_t entlen = DIRENT_SIZE(namelen);
+
+	for (size_t pos = 0; pos + entlen < len; ) {
+		struct ext2d_dirent *ent = (void*)buf + pos;
+		if (ent->namelen_lower == namelen && memcmp(ent->name, name, namelen) == 0) {
+			uint32_t n = ent->inode;
+			// TODO merge free space
+			ent->inode = 0;
+			if (ext2_write(fs, dir, buf, len, 0) != (int)len) {
+				return -1;
+			}
+			return n;
+		}
+		pos += ent->size;
+	}
+	return -1;
+}
