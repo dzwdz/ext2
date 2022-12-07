@@ -54,3 +54,6 @@ uint32_t ext2c_walk(struct ext2 *fs, const char *path, size_t plen);
 int ext2_writeinode(struct ext2 *fs, uint32_t inode, const struct ext2d_inode *buf);
 /* NOTE: requires you to manually save the inode when you're done! */
 int ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size_t len, size_t off);
+
+/* requires you to manually save the directory inode + manually update link count */
+int ext2_link(struct ext2 *fs, struct ext2d_inode *dir, const char *name, uint32_t inode_n, int flags);

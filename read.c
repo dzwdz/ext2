@@ -41,6 +41,9 @@ ext2_inode_ondisk(struct ext2 *fs, struct ext2d_inode *inode, size_t pos, size_t
 		return -1;
 	}
 	block = inode->block[block];
+	if (block == 0) {
+		return -1;
+	}
 	*dev_off = block * fs->block_size + block_off;
 	// TODO try to return as big of a block as possible
 	*dev_len = fs->block_size - block_off;

@@ -53,6 +53,33 @@ tree(struct ext2 *fs, uint32_t inode_n, const char *name)
 	}
 }
 
+void
+e_link(struct ext2 *fs, uint32_t dir_n, uint32_t file_n, const char *name)
+{
+	struct ext2d_inode dir, file;
+	if (ext2_readinode(fs, file_n, &file, sizeof file) < 0) {
+		fprintf(stderr, "couldn't read inode %u\n", file_n);
+		return;
+	}
+	file.links++;
+	if (ext2_writeinode(fs, file_n, &file) < 0) {
+		fprintf(stderr, "couldn't save inode %u\n", file_n);
+		return;
+	}
+	if (ext2_readinode(fs, dir_n, &dir, sizeof dir) < 0) {
+		fprintf(stderr, "couldn't read inode %u\n", dir_n);
+		return;
+	}
+	if (ext2_link(fs, &dir, name, file_n, 0) < 0) {
+		fprintf(stderr, "couldn't create link\n");
+		return;
+	}
+	if (ext2_writeinode(fs, dir_n, &dir) < 0) {
+		fprintf(stderr, "couldn't save inode %u\n", dir_n);
+		return;
+	}
+}
+
 int
 main(int argc, char **argv)
 {
@@ -91,7 +118,7 @@ main(int argc, char **argv)
 	for (int arg = 2; arg < argc; arg++) {
 		const char *path = argv[arg];
 		uint32_t n;
-		if (path[0] == '+')  { /* write some stuff to the file */
+		if (path[0] == '+') { /* write some stuff to the file */
 			int count = 0;
 			for (; *path == '+'; path++) count++;
 			n = ext2c_walk(fs, path, strlen(path));
@@ -105,6 +132,7 @@ main(int argc, char **argv)
 				fprintf(stderr, "couldn't read inode %u\n", n);
 				continue;
 			}
+			inode.size_lower = 0;
 			for (int i = 0; i < count; i++) {
 				const char *s = "I can eat glass and it doesn't hurt me.\n";
 				if (ext2_write(fs, &inode, s, strlen(s), i * strlen(s)) <= 0) {
@@ -117,6 +145,10 @@ main(int argc, char **argv)
 				// TODO mark fs as dirty
 			}
 			tree(fs, n, path);
+		} else if (path[0] == ':') { /* add new link */
+			// TODO maybe add some actual parsing instead of hardcoding inodes
+			e_link(fs, 17, 13, path + 1);
+			tree(fs, 17, "/links");
 		} else { /* default: show tree at path */
 			n = ext2c_walk(fs, path, strlen(path));
 			if (!n) {
