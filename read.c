@@ -17,6 +17,7 @@ ext2_inodepos(struct ext2 *fs, uint32_t inode)
 int
 ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
 {
+	void *p;
 	int off = ext2_inodepos(fs, inode);
 	if (off < 0) {
 		return -1;
@@ -24,9 +25,12 @@ ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
 	if (len > fs->super.inode_size) {
 		len = fs->super.inode_size;
 	}
-	if (fs->read(fs->dev, buf, len, off) != (int)len) {
+	p = fs->req(fs->dev, len, off);
+	if (!p) {
 		return -1;
 	}
+	memcpy(buf, p, len);
+	fs->drop(fs->dev, p, false);
 	return len;
 }
 
@@ -64,15 +68,19 @@ ext2_read(struct ext2 *fs, struct ext2d_inode *inode, void *buf, size_t len, siz
 	size_t pos = 0;
 	while (pos < len) {
 		uint64_t dev_off, dev_len;
+		void *p;
 		if (ext2_inode_ondisk(fs, inode, off + pos, &dev_off, &dev_len) < 0) {
 			return -1;
 		}
 		if (dev_len > len - pos) {
 			dev_len = len - pos;
 		}
-		if (fs->read(fs->dev, buf + pos, dev_len, dev_off) != (int)dev_len) {
+		p = fs->req(fs->dev, dev_len, dev_off);
+		if (!p) {
 			return -1;
 		}
+		memcpy(buf + pos, p, dev_len);
+		fs->drop(fs->dev, p, false);
 		pos += dev_len;
 	}
 	return pos;

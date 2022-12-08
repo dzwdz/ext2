@@ -4,13 +4,13 @@
 #include <sys/types.h>
 
 struct e2device; /* provided by the user */
-typedef int (*e2device_read)(struct e2device *dev, void *buf, size_t len, size_t off);
-typedef int (*e2device_write)(struct e2device *dev, const void *buf, size_t len, size_t off);
+typedef void *(*e2device_req)(struct e2device *dev, size_t len, size_t off);
+typedef void (*e2device_drop)(struct e2device *dev, void *ptr, bool dirty);
 
 struct ext2 {
 	struct e2device *dev;
-	e2device_read read;
-	e2device_write write;
+	e2device_req req;
+	e2device_drop drop;
 
 	struct ext2d_superblock super;
 	struct ext2d_block_group_desc *bgdt;
@@ -35,7 +35,7 @@ struct ext2_diriter {
 };
 
 /* opendev.c */
-struct ext2 *ext2_opendev(struct e2device *dev, e2device_read read_fn, e2device_write write_fn);
+struct ext2 *ext2_opendev(struct e2device *dev, e2device_req req_fn, e2device_drop drop_fn);
 void ext2_free(struct ext2 *fs);
 
 /* read.c */

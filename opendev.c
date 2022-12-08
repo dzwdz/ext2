@@ -4,18 +4,19 @@
 #include <string.h>
 
 static int ext2_readbgdt(struct ext2 *fs);
+static int ext2_rawread(struct ext2 *fs, void *buf, size_t len, size_t off);
 
 struct ext2 *
-ext2_opendev(struct e2device *dev, e2device_read read_fn, e2device_write write_fn)
+ext2_opendev(struct e2device *dev, e2device_req req_fn, e2device_drop drop_fn)
 {
 	struct ext2 *fs = malloc(sizeof *fs);
 	if (!fs) return NULL;
 	memset(fs, 0, sizeof *fs);
 	fs->dev = dev;
-	fs->read = read_fn;
-	fs->write = write_fn;
+	fs->req = req_fn;
+	fs->drop = drop_fn;
 
-	if (fs->read(fs->dev, &fs->super, sizeof fs->super, 1024) != sizeof fs->super)
+	if (ext2_rawread(fs, &fs->super, sizeof fs->super, 1024) < 0)
 		goto err;
 	if (fs->super.magic != EXT2D_SUPERBLOCK_MAGIC)
 		goto err;
@@ -25,8 +26,7 @@ ext2_opendev(struct e2device *dev, e2device_read read_fn, e2device_write write_f
 	if (fs->super.features_ro & ~(EXT2D_FEATURE_RO_DIRTYPE))
 		goto err; /* unsupported mandatory feature */
 
-	fs->rw = write_fn
-		&& fs->super.features_ro == EXT2D_FEATURE_RO_DIRTYPE
+	fs->rw = fs->super.features_ro == EXT2D_FEATURE_RO_DIRTYPE
 		&& fs->super.features_rw == (EXT2D_FEATURE_RW_SPARSE_SUPER | EXT2D_FEATURE_RW_SIZE64);
 
 	uint32_t groups1, groups2;
@@ -70,8 +70,18 @@ ext2_readbgdt(struct ext2 *fs)
 	fs->bgdt = malloc(len);
 	if (!fs->bgdt)
 		return -1;
-	if (fs->read(fs->dev, fs->bgdt, len, block * fs->block_size) != (int)len)
+	if (ext2_rawread(fs, fs->bgdt, len, block * fs->block_size) < 0)
 		return -1;
 
 	return 0;
+}
+
+static int
+ext2_rawread(struct ext2 *fs, void *buf, size_t len, size_t off)
+{
+	void *p = fs->req(fs->dev, len, off);
+	if (!p) return -1;
+	memcpy(buf, p, len);
+	fs->drop(fs->dev, p, false);
+	return len;
 }

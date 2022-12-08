@@ -1,22 +1,48 @@
 #include "ext2.h"
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-struct e2device { int fd; };
+struct e2device {
+	int fd;
+	bool busy;
+	size_t lastlen;
+	size_t lastoff;
+};
 
-static int
-e2b_read(struct e2device *dev, void *buf, size_t len, size_t off)
+static void *
+e2b_req(struct e2device *dev, size_t len, size_t off)
 {
-	return pread(dev->fd, buf, len, off);
+	void *p = malloc(len);
+	if (!p) return NULL;
+	assert(!dev->busy);
+	dev->busy = true;
+	dev->lastlen = len;
+	dev->lastoff = off;
+
+	if (pread(dev->fd, p, len, off) < (ssize_t)len) {
+		free(p);
+		dev->busy = false;
+		return NULL;
+	}
+	return p;
 }
 
-static int
-e2b_write(struct e2device *dev, const void *buf, size_t len, size_t off)
+static void
+e2b_drop(struct e2device *dev, void *ptr, bool dirty)
 {
-	return pwrite(dev->fd, buf, len, off);
+	assert(dev->busy);
+	dev->busy = false;
+	if (dirty) {
+		if (pwrite(dev->fd, ptr, dev->lastlen, dev->lastoff) < (ssize_t)dev->lastlen) {
+			fprintf(stderr, "e2b_drop: incomplete write, bailing\n");
+			exit(1);
+		}
+	}
+	free(ptr);
 }
 
 #define TREE_HEADER "inode  perms size    name\n"
@@ -97,13 +123,14 @@ main(int argc, char **argv)
 {
 	(void)argc;
 	struct e2device dev;
+	dev.busy = false;
 	dev.fd = open(argv[1], O_RDWR);
 	if (dev.fd < 0) {
 		fprintf(stderr, "couldn't open %s, quitting\n", argv[1]);
 		exit(1);
 	}
 
-	struct ext2 *fs = ext2_opendev(&dev, e2b_read, e2b_write);
+	struct ext2 *fs = ext2_opendev(&dev, e2b_req, e2b_drop);
 	if (!fs) {
 		fprintf(stderr, "ext2_opendev failed\n");
 		exit(1);

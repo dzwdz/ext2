@@ -8,15 +8,15 @@ ext2_writeinode(struct ext2 *fs, uint32_t inode, const struct ext2d_inode *buf)
 {
 	int len = sizeof(*buf);
 	int off;
+	void *p;
 	if (!fs->rw) return -1;
 
 	off = ext2_inodepos(fs, inode);
-	if (off < 0) {
-		return -1;
-	}
-	if (fs->write(fs->dev, buf, len, off) != (int)len) {
-		return -1;
-	}
+	if (off < 0) return -1;
+	p = fs->req(fs->dev, len, off);
+	if (!p) return -1;
+	memcpy(p, buf, len);
+	fs->drop(fs->dev, p, true);
 	return len;
 }
 
@@ -36,15 +36,19 @@ ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size_t l
 
 	/* do it for real */
 	for (size_t pos = 0; pos < len; ) {
+		void *p;
 		if (ext2_inode_ondisk(fs, inode, off + pos, &dev_off, &dev_len) < 0) {
 			return -1;
 		}
 		if (dev_len > len - pos) {
 			dev_len = len - pos;
 		}
-		if (fs->write(fs->dev, buf + pos, dev_len, dev_off) != (int)dev_len) {
-			return -1;
-		}
+		p = fs->req(fs->dev, dev_len, dev_off);
+		if (!p) return -1;
+		/* This memcpy is certainly not optimal, but hopefully it's drowned out
+		 * by the IO cost. */
+		memcpy(p, buf + pos, dev_len);
+		fs->drop(fs->dev, p, true);
 		pos += dev_len;
 	}
 
