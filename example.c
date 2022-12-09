@@ -63,7 +63,7 @@ tree(struct ext2 *fs, uint32_t inode_n, const char *name)
 		char *suffix = namebuf + mynamelen;
 		memcpy(namebuf, name, mynamelen);
 		namebuf[mynamelen - 1] = '/';
-		for (struct ext2_diriter iter = {0}; ext2_diriter(&iter, fs, &inode); ) {
+		for (struct ext2_diriter iter = {0}; ext2_diriter(&iter, fs, inode_n); ) {
 			memcpy(suffix, iter.ent->name, iter.ent->namelen_lower);
 			suffix[iter.ent->namelen_lower] = '\0';
 			if (strcmp(suffix, ".") == 0 || strcmp(suffix, "..") == 0) continue;
@@ -72,7 +72,7 @@ tree(struct ext2 *fs, uint32_t inode_n, const char *name)
 		free(namebuf);
 	} else if (type == 0x8) {
 		char buf[512];
-		int len = ext2_read(fs, &inode, buf, sizeof buf, 0);
+		int len = ext2_read(fs, inode_n, buf, sizeof buf, 0);
 		printf("%.*s", len, buf);
 	} else {
 		printf("(unknown type)\n");
@@ -94,7 +94,7 @@ splitdir(struct ext2 *fs, const char *path, char **name)
 static void
 e_link(struct ext2 *fs, uint32_t dir_n, uint32_t file_n, const char *name)
 {
-	struct ext2d_inode dir, file;
+	struct ext2d_inode file;
 	if (ext2_readinode(fs, file_n, &file, sizeof file) < 0) {
 		fprintf(stderr, "couldn't read inode %u\n", file_n);
 		return;
@@ -104,16 +104,8 @@ e_link(struct ext2 *fs, uint32_t dir_n, uint32_t file_n, const char *name)
 		fprintf(stderr, "couldn't save inode %u\n", file_n);
 		return;
 	}
-	if (ext2_readinode(fs, dir_n, &dir, sizeof dir) < 0) {
-		fprintf(stderr, "couldn't read inode %u\n", dir_n);
-		return;
-	}
-	if (ext2_link(fs, &dir, name, file_n, 0) < 0) {
+	if (ext2_link(fs, dir_n, name, file_n, 0) < 0) {
 		fprintf(stderr, "couldn't create link\n");
-		return;
-	}
-	if (ext2_writeinode(fs, dir_n, &dir) < 0) {
-		fprintf(stderr, "couldn't save inode %u\n", dir_n);
 		return;
 	}
 }
@@ -172,16 +164,16 @@ main(int argc, char **argv)
 				continue;
 			}
 			inode.size_lower = 0;
-			for (int i = 0; i < count; i++) {
-				const char *s = "I can eat glass and it doesn't hurt me.\n";
-				if (ext2_write(fs, &inode, s, strlen(s), i * strlen(s)) <= 0) {
-					fprintf(stderr, "write error :(\n");
-					break;
-				}
-			}
 			if (ext2_writeinode(fs, n, &inode) < 0) {
 				fprintf(stderr, "couldn't save inode %u\n", n);
 				// TODO mark fs as dirty
+			}
+			for (int i = 0; i < count; i++) {
+				const char *s = "I can eat glass and it doesn't hurt me.\n";
+				if (ext2_write(fs, n, s, strlen(s), i * strlen(s)) <= 0) {
+					fprintf(stderr, "write error :(\n");
+					break;
+				}
 			}
 			tree(fs, n, path);
 		} else if (strchr(path, ':')) { /* source:linktarget */
@@ -213,17 +205,9 @@ main(int argc, char **argv)
 				fprintf(stderr, "directory doesn't exist\n");
 				continue;
 			}
-			if (ext2_readinode(fs, dir_n, &inode, sizeof inode) < 0) {
-				fprintf(stderr, "couldn't read inode\n");
-				continue;
-			}
-			target_n = ext2_unlink(fs, &inode, name);
+			target_n = ext2_unlink(fs, dir_n, name);
 			if (!target_n) {
 				fprintf(stderr, "deletion failed\n");
-				continue;
-			}
-			if (ext2_writeinode(fs, dir_n, &inode) < 0) {
-				fprintf(stderr, "couldn't write inode\n");
 				continue;
 			}
 			if (ext2_readinode(fs, target_n, &inode, sizeof inode) < 0) {

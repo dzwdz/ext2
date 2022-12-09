@@ -5,6 +5,8 @@
 
 struct e2device; /* provided by the user */
 typedef void *(*e2device_req)(struct e2device *dev, size_t len, size_t off);
+// TODO add a way to report write failure
+// why didn't i add that right away?
 typedef void (*e2device_drop)(struct e2device *dev, void *ptr, bool dirty);
 
 struct ext2 {
@@ -41,22 +43,22 @@ void ext2_free(struct ext2 *fs);
 /* read.c */
 int ext2_inodepos(struct ext2 *fs, uint32_t inode);
 int ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len);
-int ext2_read(struct ext2 *fs, struct ext2d_inode *inode, void *buf, size_t len, size_t off);
-bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, struct ext2d_inode *inode);
+struct ext2d_inode *ext2_inode_req(struct ext2 *fs, uint32_t inode_n);
+int ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off);
+bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n);
 
 /** Returns the on-disk address and available length of the inode at pos.
  * On success, *dev_len > 0. */
-int ext2_inode_ondisk(struct ext2 *fs, struct ext2d_inode *inode, size_t pos, size_t *dev_off, size_t *dev_len);
+int ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev_off, size_t *dev_len);
 
 uint32_t ext2c_walk(struct ext2 *fs, const char *path, size_t plen);
 
 /* write.c */
 int ext2_writeinode(struct ext2 *fs, uint32_t inode, const struct ext2d_inode *buf);
-/* NOTE: requires you to manually save the inode when you're done! */
-int ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size_t len, size_t off);
+int ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_t off);
 
 /* requires you to manually save the directory inode + manually update link count */
-int ext2_link(struct ext2 *fs, struct ext2d_inode *dir, const char *name, uint32_t inode_n, int flags);
+int ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target_n, int flags);
 /** Removes a directory entry. Doesn't update the link count.
  * @return the corresponding inode, 0 on failure */
-uint32_t ext2_unlink(struct ext2 *fs, struct ext2d_inode *dir, const char *name);
+uint32_t ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name);

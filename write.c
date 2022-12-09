@@ -21,14 +21,14 @@ ext2_writeinode(struct ext2 *fs, uint32_t inode, const struct ext2d_inode *buf)
 }
 
 int
-ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size_t len, size_t off)
+ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_t off)
 {
 	uint64_t dev_off, dev_len;
 	if (!fs->rw) return -1;
 
 	/* test run, see if we can access all the space */
 	for (size_t pos = 0; pos < len; ) {
-		if (ext2_inode_ondisk(fs, inode, off + pos, &dev_off, &dev_len) < 0) {
+		if (ext2_inode_ondisk(fs, inode_n, off + pos, &dev_off, &dev_len) < 0) {
 			return -1;
 		}
 		pos += dev_len;
@@ -37,7 +37,7 @@ ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size_t l
 	/* do it for real */
 	for (size_t pos = 0; pos < len; ) {
 		void *p;
-		if (ext2_inode_ondisk(fs, inode, off + pos, &dev_off, &dev_len) < 0) {
+		if (ext2_inode_ondisk(fs, inode_n, off + pos, &dev_off, &dev_len) < 0) {
 			return -1;
 		}
 		if (dev_len > len - pos) {
@@ -53,8 +53,13 @@ ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size_t l
 	}
 
 	// TODO size64
+	struct ext2d_inode *inode = ext2_inode_req(fs, inode_n);
+	if (!inode) {
+		return -1;
+	}
 	if (inode->size_lower < len + off)
 		inode->size_lower = len + off;
+	fs->drop(fs->dev, inode, true);
 
 	return len;
 }
@@ -62,10 +67,10 @@ ext2_write(struct ext2 *fs, struct ext2d_inode *inode, const void *buf, size_t l
 #define DIRENT_SIZE(namelen) ((sizeof(struct ext2d_dirent) + namelen + 3) & ~3)
 
 int
-ext2_link(struct ext2 *fs, struct ext2d_inode *dir, const char *name, uint32_t inode_n, int flags)
+ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target_n, int flags)
 {
 	char buf[1024];
-	size_t len = ext2_read(fs, dir, buf, sizeof buf, 0);
+	size_t len = ext2_read(fs, dir_n, buf, sizeof buf, 0);
 	size_t namelen = strlen(name);
 	size_t entlen = DIRENT_SIZE(namelen);
 
@@ -77,11 +82,11 @@ ext2_link(struct ext2 *fs, struct ext2d_inode *dir, const char *name, uint32_t i
 		struct ext2d_dirent *ent = (void*)buf + pos;
 		if (ent->inode == 0 && entlen <= ent->size) {
 			/* found free dirent */
-			ent->inode = inode_n;
+			ent->inode = target_n;
 			ent->namelen_lower = namelen;
 			ent->type = flags & 7;
 			memcpy(ent->name, name, namelen);
-			if (ext2_write(fs, dir, buf, len, 0) != (int)len) {
+			if (ext2_write(fs, dir_n, buf, len, 0) != (int)len) {
 				return -1;
 			}
 			return 0;
@@ -100,10 +105,10 @@ ext2_link(struct ext2 *fs, struct ext2d_inode *dir, const char *name, uint32_t i
 }
 
 uint32_t
-ext2_unlink(struct ext2 *fs, struct ext2d_inode *dir, const char *name)
+ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name)
 {
 	char buf[1024];
-	size_t len = ext2_read(fs, dir, buf, sizeof buf, 0);
+	size_t len = ext2_read(fs, dir_n, buf, sizeof buf, 0);
 	size_t namelen = strlen(name);
 	size_t entlen = DIRENT_SIZE(namelen);
 
@@ -113,7 +118,7 @@ ext2_unlink(struct ext2 *fs, struct ext2d_inode *dir, const char *name)
 			uint32_t n = ent->inode;
 			// TODO merge free space
 			ent->inode = 0;
-			if (ext2_write(fs, dir, buf, len, 0) != (int)len) {
+			if (ext2_write(fs, dir_n, buf, len, 0) != (int)len) {
 				return -1;
 			}
 			return n;
