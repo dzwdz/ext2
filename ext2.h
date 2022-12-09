@@ -5,9 +5,8 @@
 
 struct e2device; /* provided by the user */
 typedef void *(*e2device_req)(struct e2device *dev, size_t len, size_t off);
-// TODO add a way to report write failure
-// why didn't i add that right away?
-typedef void (*e2device_drop)(struct e2device *dev, void *ptr, bool dirty);
+/* 0 on success, -1 on failure to write */
+typedef int (*e2device_drop)(struct e2device *dev, void *ptr, bool dirty);
 
 struct ext2 {
 	struct e2device *dev;

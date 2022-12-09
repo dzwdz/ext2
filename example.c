@@ -31,18 +31,20 @@ e2b_req(struct e2device *dev, size_t len, size_t off)
 	return p;
 }
 
-static void
+static int
 e2b_drop(struct e2device *dev, void *ptr, bool dirty)
 {
 	assert(dev->busy);
 	dev->busy = false;
 	if (dirty) {
 		if (pwrite(dev->fd, ptr, dev->lastlen, dev->lastoff) < (ssize_t)dev->lastlen) {
-			fprintf(stderr, "e2b_drop: incomplete write, bailing\n");
-			exit(1);
+			fprintf(stderr, "e2b_drop: incomplete write\n");
+			free(ptr);
+			return -1;
 		}
 	}
 	free(ptr);
+	return 0;
 }
 
 #define TREE_HEADER "inode  perms size    name\n"
