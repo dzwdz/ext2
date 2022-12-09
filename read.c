@@ -14,26 +14,6 @@ ext2_inodepos(struct ext2 *fs, uint32_t inode)
 	return fs->block_size * fs->bgdt[group].inode_table + idx * fs->super.inode_size;
 }
 
-int
-ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len)
-{
-	void *p;
-	int off = ext2_inodepos(fs, inode);
-	if (off < 0) {
-		return -1;
-	}
-	if (len > fs->super.inode_size) {
-		len = fs->super.inode_size;
-	}
-	p = fs->req(fs->dev, len, off);
-	if (!p) {
-		return -1;
-	}
-	memcpy(buf, p, len);
-	fs->drop(fs->dev, p, false);
-	return len;
-}
-
 struct ext2d_inode *
 ext2_inode_req(struct ext2 *fs, uint32_t inode_n)
 {
@@ -71,18 +51,20 @@ ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev_off
 int
 ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off)
 {
-	struct ext2d_inode _inode;
-	if (ext2_readinode(fs, inode_n, &_inode, sizeof _inode) < 0) {
-		return -1;
+	size_t size;
+	{
+		struct ext2d_inode *inode = ext2_inode_req(fs, inode_n);
+		if (!inode) return -1;
+		size = inode->size_lower;
+		ext2_dropreq(fs, inode, false);
 	}
-	struct ext2d_inode *inode = &_inode;
 
 	if (len > INT_MAX)
 		len = INT_MAX;
 	// TODO 64-bit size
-	if (len > inode->size_lower - off)
-		len = inode->size_lower - off;
-	if (off >= inode->size_lower)
+	if (len > size - off)
+		len = size - off;
+	if (off >= size)
 		return 0;
 
 	size_t pos = 0;
@@ -118,11 +100,6 @@ ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n)
 	if (iter_int.needs_reset)
 		return false;
 
-	struct ext2d_inode inode;
-	if (ext2_readinode(fs, inode_n, &inode, sizeof inode) < 0) {
-		return false;
-	}
-
 	for (;;) {
 		size_t len = ext2_read(fs, inode_n, iter_int.buf, sizeof iter_int.buf, iter_int.pos);
 		struct ext2d_dirent *ent = (void*)iter_int.buf;
@@ -146,17 +123,12 @@ ext2c_walk(struct ext2 *fs, const char *path, size_t plen)
 	if (plen < 1 || path[0] != '/') return 0;
 	path++; plen--;
 
-	struct ext2d_inode inode;
 	struct ext2_diriter iter;
 	uint32_t inode_n = 2;
 
 	while (plen) {
 		char *slash = memchr(path, '/', plen);
 		size_t seglen = slash ? (size_t)(slash - path) : plen;
-
-		// TODO allow the user to supply caching functions
-		if (ext2_readinode(fs, inode_n, &inode, sizeof inode) < 0)
-			return 0;
 
 		uint32_t last_inode = inode_n;
 		inode_n = 0;

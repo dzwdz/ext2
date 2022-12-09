@@ -52,13 +52,18 @@ e2b_drop(struct e2device *dev, void *ptr, bool dirty)
 static void
 tree(struct ext2 *fs, uint32_t inode_n, const char *name)
 {
-	struct ext2d_inode inode;
-	if (ext2_readinode(fs, inode_n, &inode, sizeof inode) < 0) {
+	struct ext2d_inode *inode;
+	int type;
+	inode = ext2_inode_req(fs, inode_n);
+	if (!inode) {
 		fprintf(stderr, "couldn't read inode %u\n", inode_n);
 		return;
 	}
-	printf("%5u %6.3o %6u  %s\n", inode_n, inode.perms, inode.size_lower, *name ? name : "/");
-	int type = (inode.perms >> 12) & 0xF;
+	printf("%5u %6.3o %6u  %s\n", inode_n, inode->perms, inode->size_lower, *name ? name : "/");
+	type = (inode->perms >> 12) & 0xF;
+	ext2_dropreq(fs, inode, false);
+	inode = NULL;
+
 	if (type == 0x4) {
 		size_t mynamelen = strlen(name) + 1;
 		char *namebuf = malloc(mynamelen + 256 + 1);
@@ -96,16 +101,17 @@ splitdir(struct ext2 *fs, const char *path, char **name)
 static void
 e_link(struct ext2 *fs, uint32_t dir_n, uint32_t file_n, const char *name)
 {
-	struct ext2d_inode file;
-	if (ext2_readinode(fs, file_n, &file, sizeof file) < 0) {
-		fprintf(stderr, "couldn't read inode %u\n", file_n);
+	struct ext2d_inode *file = ext2_inode_req(fs, file_n);
+	if (!file) {
+		fprintf(stderr, "couldn't access inode %u\n", file_n);
 		return;
 	}
-	file.links++;
-	if (ext2_writeinode(fs, file_n, &file) < 0) {
+	file->links++;
+	if (ext2_dropreq(fs, file, true) < 0) {
 		fprintf(stderr, "couldn't save inode %u\n", file_n);
 		return;
 	}
+
 	if (ext2_link(fs, dir_n, name, file_n, 0) < 0) {
 		fprintf(stderr, "couldn't create link\n");
 		return;
@@ -160,16 +166,21 @@ main(int argc, char **argv)
 				continue;
 			}
 
-			struct ext2d_inode inode;
-			if (ext2_readinode(fs, n, &inode, sizeof inode) < 0) {
-				fprintf(stderr, "couldn't read inode %u\n", n);
-				continue;
+			{
+				struct ext2d_inode *inode;
+				inode = ext2_inode_req(fs, n);
+				if (!inode) {
+					fprintf(stderr, "couldn't read inode %u\n", n);
+					continue;
+				}
+				inode->size_lower = 0;
+				if (ext2_dropreq(fs, inode, true) < 0) {
+					fprintf(stderr, "couldn't save inode %u\n", n);
+					// TODO mark fs as dirty
+					continue;
+				}
 			}
-			inode.size_lower = 0;
-			if (ext2_writeinode(fs, n, &inode) < 0) {
-				fprintf(stderr, "couldn't save inode %u\n", n);
-				// TODO mark fs as dirty
-			}
+
 			for (int i = 0; i < count; i++) {
 				const char *s = "I can eat glass and it doesn't hurt me.\n";
 				if (ext2_write(fs, n, s, strlen(s), i * strlen(s)) <= 0) {
@@ -199,7 +210,7 @@ main(int argc, char **argv)
 			e_link(fs, target_n, src_n, name);
 			tree(fs, target_n, target);
 		} else if (strchr(path, '-')) { /* unlink */
-			struct ext2d_inode inode;
+			struct ext2d_inode *target;
 			uint32_t dir_n, target_n;
 			char *name;
 			dir_n = splitdir(fs, path + 1, &name);
@@ -212,13 +223,13 @@ main(int argc, char **argv)
 				fprintf(stderr, "deletion failed\n");
 				continue;
 			}
-			if (ext2_readinode(fs, target_n, &inode, sizeof inode) < 0) {
+			target = ext2_inode_req(fs, target_n);
+			if (!target) {
 				fprintf(stderr, "couldn't read inode\n");
 				continue;
 			}
-			// TODO fix BGD
-			inode.links--;
-			if (ext2_writeinode(fs, target_n, &inode) < 0) {
+			target->links--;
+			if (ext2_dropreq(fs, target, true)) {
 				fprintf(stderr, "couldn't write inode\n");
 				continue;
 			}

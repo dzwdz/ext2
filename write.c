@@ -4,23 +4,6 @@
 #include <string.h>
 
 int
-ext2_writeinode(struct ext2 *fs, uint32_t inode, const struct ext2d_inode *buf)
-{
-	int len = sizeof(*buf);
-	int off;
-	void *p;
-	if (!fs->rw) return -1;
-
-	off = ext2_inodepos(fs, inode);
-	if (off < 0) return -1;
-	p = fs->req(fs->dev, len, off);
-	if (!p) return -1;
-	memcpy(p, buf, len);
-	if (fs->drop(fs->dev, p, true) < 0) return -1;
-	return len;
-}
-
-int
 ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_t off)
 {
 	uint64_t dev_off, dev_len;

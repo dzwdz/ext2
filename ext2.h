@@ -40,9 +40,12 @@ struct ext2 *ext2_opendev(struct e2device *dev, e2device_req req_fn, e2device_dr
 void ext2_free(struct ext2 *fs);
 
 /* read.c */
-int ext2_inodepos(struct ext2 *fs, uint32_t inode);
-int ext2_readinode(struct ext2 *fs, uint32_t inode, void *buf, size_t len);
 struct ext2d_inode *ext2_inode_req(struct ext2 *fs, uint32_t inode_n);
+static inline int ext2_dropreq(struct ext2 *fs, void *ptr, bool dirty) {
+	return fs->drop(fs->dev, ptr, dirty);
+}
+
+int ext2_inodepos(struct ext2 *fs, uint32_t inode);
 int ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off);
 bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n);
 
@@ -53,7 +56,6 @@ int ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev
 uint32_t ext2c_walk(struct ext2 *fs, const char *path, size_t plen);
 
 /* write.c */
-int ext2_writeinode(struct ext2 *fs, uint32_t inode, const struct ext2d_inode *buf);
 int ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_t off);
 
 /* requires you to manually save the directory inode + manually update link count */
