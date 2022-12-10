@@ -38,7 +38,7 @@ ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_
 	}
 
 	// TODO size64
-	struct ext2d_inode *inode = ext2_inode_req(fs, inode_n);
+	struct ext2d_inode *inode = ext2_req_inode(fs, inode_n);
 	if (!inode) {
 		return -1;
 	}

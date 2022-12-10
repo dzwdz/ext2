@@ -54,7 +54,7 @@ tree(struct ext2 *fs, uint32_t inode_n, const char *name)
 {
 	struct ext2d_inode *inode;
 	int type;
-	inode = ext2_inode_req(fs, inode_n);
+	inode = ext2_req_inode(fs, inode_n);
 	if (!inode) {
 		fprintf(stderr, "couldn't read inode %u\n", inode_n);
 		return;
@@ -101,7 +101,7 @@ splitdir(struct ext2 *fs, const char *path, char **name)
 static void
 e_link(struct ext2 *fs, uint32_t dir_n, uint32_t file_n, const char *name)
 {
-	struct ext2d_inode *file = ext2_inode_req(fs, file_n);
+	struct ext2d_inode *file = ext2_req_inode(fs, file_n);
 	if (!file) {
 		fprintf(stderr, "couldn't access inode %u\n", file_n);
 		return;
@@ -168,7 +168,7 @@ main(int argc, char **argv)
 
 			{
 				struct ext2d_inode *inode;
-				inode = ext2_inode_req(fs, n);
+				inode = ext2_req_inode(fs, n);
 				if (!inode) {
 					fprintf(stderr, "couldn't read inode %u\n", n);
 					continue;
@@ -223,7 +223,7 @@ main(int argc, char **argv)
 				fprintf(stderr, "deletion failed\n");
 				continue;
 			}
-			target = ext2_inode_req(fs, target_n);
+			target = ext2_req_inode(fs, target_n);
 			if (!target) {
 				fprintf(stderr, "couldn't read inode\n");
 				continue;

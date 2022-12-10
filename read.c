@@ -15,11 +15,37 @@ ext2_inodepos(struct ext2 *fs, uint32_t inode)
 }
 
 struct ext2d_inode *
-ext2_inode_req(struct ext2 *fs, uint32_t inode_n)
+ext2_req_inode(struct ext2 *fs, uint32_t inode_n)
 {
 	int off = ext2_inodepos(fs, inode_n);
 	if (off < 0) return NULL;
 	return fs->req(fs->dev, sizeof(struct ext2d_inode), off);
+}
+
+void *
+ext2_req_file(struct ext2 *fs, uint32_t inode_n, size_t *len, size_t off)
+{
+	uint64_t dev_off, dev_len;
+	size_t size, og_len = *len;
+	{
+		struct ext2d_inode *inode = ext2_req_inode(fs, inode_n);
+		if (!inode) return NULL;
+		size = inode->size_lower;
+		ext2_dropreq(fs, inode, false);
+	}
+	if (off >= size) {
+		*len = 0;
+		return NULL;
+	}
+	if (ext2_inode_ondisk(fs, inode_n, off, &dev_off, &dev_len) < 0) {
+		return NULL;
+	}
+	*len = dev_len;
+	if (*len > size - off)
+		*len = size - off;
+	if (*len > og_len)
+		*len = og_len;
+	return fs->req(fs->dev, *len, dev_off);
 }
 
 int
@@ -33,7 +59,7 @@ ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev_off
 		// TODO indirect blocks
 		return -1;
 	}
-	inode = ext2_inode_req(fs, inode_n);
+	inode = ext2_req_inode(fs, inode_n);
 	if (!inode) {
 		return -1;
 	}
@@ -51,39 +77,16 @@ ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev_off
 int
 ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off)
 {
-	size_t size;
-	{
-		struct ext2d_inode *inode = ext2_inode_req(fs, inode_n);
-		if (!inode) return -1;
-		size = inode->size_lower;
-		ext2_dropreq(fs, inode, false);
-	}
-
-	if (len > INT_MAX)
-		len = INT_MAX;
-	// TODO 64-bit size
-	if (len > size - off)
-		len = size - off;
-	if (off >= size)
-		return 0;
-
 	size_t pos = 0;
 	while (pos < len) {
-		uint64_t dev_off, dev_len;
-		void *p;
-		if (ext2_inode_ondisk(fs, inode_n, off + pos, &dev_off, &dev_len) < 0) {
-			return -1;
-		}
-		if (dev_len > len - pos) {
-			dev_len = len - pos;
-		}
-		p = fs->req(fs->dev, dev_len, dev_off);
+		size_t part_len = len - pos;
+		void *p = ext2_req_file(fs, inode_n, &part_len, off + pos);
 		if (!p) {
-			return -1;
+			break;
 		}
-		memcpy(buf + pos, p, dev_len);
-		fs->drop(fs->dev, p, false);
-		pos += dev_len;
+		memcpy(buf + pos, p, part_len);
+		ext2_dropreq(fs, p, false);
+		pos += part_len;
 	}
 	return pos;
 }
@@ -92,6 +95,8 @@ bool
 ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n)
 {
 #define iter_int iter->_internal
+	struct ext2d_dirent *ent = NULL;
+	size_t len;
 	if (inode_n == 0) {
 		iter_int.needs_reset = false;
 		iter_int.pos = 0;
@@ -101,19 +106,30 @@ ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n)
 		return false;
 
 	for (;;) {
-		size_t len = ext2_read(fs, inode_n, iter_int.buf, sizeof iter_int.buf, iter_int.pos);
-		struct ext2d_dirent *ent = (void*)iter_int.buf;
-		/* accessing possibly uninitialized fields of ent doesn't matter here */
+		len = sizeof(*ent) + 256;
+		ent = ext2_req_file(fs, inode_n, &len, iter_int.pos);
+		if (!ent || len < sizeof(*ent)) {
+			break;
+		}
 		iter_int.pos += ent->size;
 		if (len < sizeof(*ent) + ent->namelen_lower) {
-			iter_int.needs_reset = true;
-			return false;
+			break;
 		}
 		if (ent->inode > 0) {
-			iter->ent = ent;
+			memcpy(iter_int.buf, ent, sizeof(*ent) + ent->namelen_lower);
+			iter->ent = (void*)iter_int.buf;
+			ext2_dropreq(fs, ent, false);
 			return true;
 		}
+		ext2_dropreq(fs, ent, false);
+		ent = NULL;
 	}
+
+	if (ent) {
+		ext2_dropreq(fs, ent, false);
+	}
+	iter_int.needs_reset = true;
+	return false;
 #undef iter_int
 }
 
