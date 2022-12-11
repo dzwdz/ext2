@@ -1,50 +1,29 @@
+#include "ex_cache.h"
 #include "ext2.h"
-#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-struct e2device {
-	int fd;
-	bool busy;
-	size_t lastlen;
-	size_t lastoff;
-};
-
-static void *
-e2b_req(struct e2device *dev, size_t len, size_t off)
+static int
+my_read(void *userdata, void *buf, size_t len, size_t off)
 {
-	void *p = malloc(len);
-	if (!p) return NULL;
-	assert(!dev->busy);
-	dev->busy = true;
-	dev->lastlen = len;
-	dev->lastoff = off;
-
-	if (pread(dev->fd, p, len, off) < (ssize_t)len) {
-		free(p);
-		dev->busy = false;
-		return NULL;
+	if (pread((int)(intptr_t)userdata, buf, len, off) == (ssize_t)len) {
+		return 0;
+	} else {
+		return 1;
 	}
-	return p;
 }
 
 static int
-e2b_drop(struct e2device *dev, void *ptr, bool dirty)
+my_write(void *userdata, const void *buf, size_t len, size_t off)
 {
-	assert(dev->busy);
-	dev->busy = false;
-	if (dirty) {
-		if (pwrite(dev->fd, ptr, dev->lastlen, dev->lastoff) < (ssize_t)dev->lastlen) {
-			fprintf(stderr, "e2b_drop: incomplete write\n");
-			free(ptr);
-			return -1;
-		}
+	if (pwrite((int)(intptr_t)userdata, buf, len, off) == (ssize_t)len) {
+		return 0;
+	} else {
+		return 1;
 	}
-	free(ptr);
-	return 0;
 }
 
 #define TREE_HEADER "inode  perms size    name\n"
@@ -122,15 +101,19 @@ int
 main(int argc, char **argv)
 {
 	(void)argc;
-	struct e2device dev;
-	dev.busy = false;
-	dev.fd = open(argv[1], O_RDWR);
-	if (dev.fd < 0) {
+	int fd = open(argv[1], O_RDWR);
+	if (fd < 0) {
 		fprintf(stderr, "couldn't open %s, quitting\n", argv[1]);
 		exit(1);
 	}
+	struct e2device *dev = exc_init(my_read, my_write, (void*)(intptr_t)fd);
+	if (!dev) {
+		fprintf(stderr, "exc_init failed\n");
+		exit(1);
+	}
 
-	struct ext2 *fs = ext2_opendev(&dev, e2b_req, e2b_drop);
+	/* using the cache implementation from ex_cache.c */
+	struct ext2 *fs = ext2_opendev(dev, exc_req, exc_drop);
 	if (!fs) {
 		fprintf(stderr, "ext2_opendev failed\n");
 		exit(1);
