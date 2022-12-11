@@ -59,6 +59,19 @@ exc_free(struct e2device *dev)
 	free(dev);
 }
 
+static struct span *
+find_span(struct e2device *dev)
+{
+	struct span *s;
+	for (int i = 0; i < SPANAMT; i++) {
+		s = &dev->spans[i];
+		if (s->buf == NULL) return s;
+	}
+	s = &dev->spans[dev->span_pos];
+	dev->span_pos = (dev->span_pos + 1) & (SPANAMT - 1);
+	return s;
+}
+
 void *
 exc_req(struct e2device *dev, size_t len, size_t off)
 {
@@ -84,21 +97,24 @@ exc_req(struct e2device *dev, size_t len, size_t off)
 	}
 	dev->stats.none++;
 
-	struct span *s = &dev->spans[dev->span_pos];
-	dev->span_pos = (dev->span_pos + 1) & (SPANAMT - 1);
+	struct span *s = find_span(dev);
 	s->start = off;
 	s->end = off + len;
-	s->buf = malloc(len);
+
+	/* round to an assumed 4k block size */
+	s->start = s->start & ~4095;
+	s->end = (off + len + 4095) & ~4095;
+	s->buf = malloc(s->end - s->start);
 	if (!s->buf) {
 		return NULL;
 	}
-	if (dev->read_fn(dev->userdata, s->buf, len, off) < 0) {
+	if (dev->read_fn(dev->userdata, s->buf, s->end - s->start, s->start) < 0) {
 		free(s->buf);
 		s->buf = NULL;
 		return NULL;
 	}
 	dev->active = s;
-	dev->lastptr = s->buf;
+	dev->lastptr = s->buf + off - s->start;
 	return dev->lastptr;
 }
 
