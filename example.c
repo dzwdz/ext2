@@ -225,4 +225,5 @@ main(int argc, char **argv)
 			tree(fs, n, path);
 		}
 	}
+	exc_free(dev);
 }
