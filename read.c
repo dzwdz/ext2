@@ -43,7 +43,7 @@ ext2_req_file(struct ext2 *fs, uint32_t inode_n, size_t *len, size_t off)
 	*len = dev_len;
 	if (*len > size - off)
 		*len = size - off;
-	if (*len > og_len)
+	if (og_len && *len > og_len)
 		*len = og_len;
 	return fs->req(fs->dev, *len, dev_off);
 }

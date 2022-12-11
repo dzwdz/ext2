@@ -57,27 +57,31 @@ ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_
 int
 ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target_n, int flags)
 {
-	char buf[1024];
-	size_t len = ext2_read(fs, dir_n, buf, sizeof buf, 0);
+	size_t len = 0;
+	void *dir;
 	size_t namelen = strlen(name);
 	size_t entlen = DIRENT_SIZE(namelen);
-
 	if ((uint8_t)namelen != namelen) {
+		return -1;
+	}
+	dir = ext2_req_file(fs, dir_n, &len, 0);
+	if (!dir) {
 		return -1;
 	}
 
 	for (size_t pos = 0; pos + entlen < len; ) {
-		struct ext2d_dirent *ent = (void*)buf + pos;
+		struct ext2d_dirent *ent = dir + pos;
 		if (ent->inode == 0 && entlen <= ent->size) {
 			/* found free dirent */
 			ent->inode = target_n;
 			ent->namelen_lower = namelen;
 			ent->type = flags & 7;
 			memcpy(ent->name, name, namelen);
-			if (ext2_write(fs, dir_n, buf, len, 0) != (int)len) {
+			if (ext2_dropreq(fs, dir, true) < 0) {
 				return -1;
+			} else {
+				return 0;
 			}
-			return 0;
 		} else if (DIRENT_SIZE(ent->namelen_lower) + namelen <= ent->size) {
 			/* enough unused space to split.
 			 * will get used in the next iteration */
@@ -89,29 +93,39 @@ ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target_n, 
 		}
 		pos += ent->size;
 	}
+	ext2_dropreq(fs, dir, false);
 	return -1;
 }
 
 uint32_t
 ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name)
 {
-	char buf[1024];
-	size_t len = ext2_read(fs, dir_n, buf, sizeof buf, 0);
+	size_t len = 0;
+	void *dir;
 	size_t namelen = strlen(name);
 	size_t entlen = DIRENT_SIZE(namelen);
+	if ((uint8_t)namelen != namelen) {
+		return -1;
+	}
+	dir = ext2_req_file(fs, dir_n, &len, 0);
+	if (!dir) {
+		return -1;
+	}
 
 	for (size_t pos = 0; pos + entlen < len; ) {
-		struct ext2d_dirent *ent = (void*)buf + pos;
+		struct ext2d_dirent *ent = dir + pos;
 		if (ent->namelen_lower == namelen && memcmp(ent->name, name, namelen) == 0) {
 			uint32_t n = ent->inode;
 			// TODO merge free space
 			ent->inode = 0;
-			if (ext2_write(fs, dir_n, buf, len, 0) != (int)len) {
+			if (ext2_dropreq(fs, dir, true) < 0) {
 				return -1;
+			} else {
+				return n;
 			}
-			return n;
 		}
 		pos += ent->size;
 	}
+	ext2_dropreq(fs, dir, false);
 	return -1;
 }
