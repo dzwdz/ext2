@@ -55,7 +55,7 @@ struct ext2d_superblock {
 	char lastmount[64];
 } __attribute__((__packed__));
 
-struct ext2d_block_group_desc {
+struct ext2d_bgd {
 	uint32_t block_bitmap;
 	uint32_t inode_bitmap;
 	uint32_t inode_table;

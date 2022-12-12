@@ -14,7 +14,7 @@ struct ext2 {
 	e2device_drop drop;
 
 	struct ext2d_superblock super;
-	struct ext2d_block_group_desc *bgdt;
+	struct ext2d_bgd *bgdt;
 
 	/* all computed from the superblock - could just be macros instead */
 	bool rw;
