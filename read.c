@@ -6,12 +6,18 @@
 int
 ext2_inodepos(struct ext2 *fs, uint32_t inode)
 {
+	struct ext2d_bgd *bgd;
+	int ret = -1;
+	// TODO pointless division by power of 2
 	uint32_t group = (inode - 1) / fs->super.inodes_per_group;
 	uint32_t idx   = (inode - 1) % fs->super.inodes_per_group;
 	if (group >= fs->groups) return -1;
-	// TODO no overflow guard
-	// also, sketchy return type
-	return fs->block_size * fs->bgdt[group].inode_table + idx * fs->super.inode_size;
+	bgd = ext2_req_bgdt(fs, group);
+	if (bgd) {
+		ret = fs->block_size * bgd->inode_table + idx * fs->super.inode_size;
+		ext2_dropreq(fs, bgd, false);
+	}
+	return ret;
 }
 
 struct ext2d_inode *
@@ -46,6 +52,15 @@ ext2_req_file(struct ext2 *fs, uint32_t inode_n, size_t *len, size_t off)
 	if (og_len && *len > og_len)
 		*len = og_len;
 	return fs->req(fs->dev, *len, dev_off);
+}
+
+struct ext2d_bgd *
+ext2_req_bgdt(struct ext2 *fs, uint32_t idx)
+{
+	size_t block;
+	if (!(idx < fs->groups)) return NULL;
+	block = fs->block_size == 1024 ? 2 : 1;
+	return fs->req(fs->dev, sizeof(struct ext2d_bgd), block * fs->block_size);
 }
 
 int

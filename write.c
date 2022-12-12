@@ -52,6 +52,21 @@ ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_
 	return len;
 }
 
+static int
+change_linkcnt(struct ext2 *fs, uint32_t inode_n, int d)
+{
+	struct ext2d_inode *inode = ext2_req_inode(fs, inode_n);
+	if (!inode) {
+		return -1;
+	}
+	// TODO check overflow
+	inode->links += d;
+	if (ext2_dropreq(fs, inode, true) < 0) {
+		return -1;
+	}
+	return 0;
+}
+
 #define DIRENT_SIZE(namelen) ((sizeof(struct ext2d_dirent) + namelen + 3) & ~3)
 
 int
@@ -62,6 +77,9 @@ ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target_n, 
 	size_t namelen = strlen(name);
 	size_t entlen = DIRENT_SIZE(namelen);
 	if ((uint8_t)namelen != namelen) {
+		return -1;
+	}
+	if (change_linkcnt(fs, target_n, 1) < 0) {
 		return -1;
 	}
 	dir = ext2_req_file(fs, dir_n, &len, 0);
@@ -121,6 +139,7 @@ ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name)
 			if (ext2_dropreq(fs, dir, true) < 0) {
 				return -1;
 			} else {
+				change_linkcnt(fs, n, -1);
 				return n;
 			}
 		}

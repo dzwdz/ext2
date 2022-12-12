@@ -14,7 +14,6 @@ struct ext2 {
 	e2device_drop drop;
 
 	struct ext2d_superblock super;
-	struct ext2d_bgd *bgdt;
 
 	/* all computed from the superblock - could just be macros instead */
 	bool rw;
@@ -43,6 +42,7 @@ static inline int ext2_dropreq(struct ext2 *fs, void *ptr, bool dirty) {
 }
 struct ext2d_inode *ext2_req_inode(struct ext2 *fs, uint32_t inode_n);
 void *ext2_req_file(struct ext2 *fs, uint32_t inode_n, size_t *len, size_t off);
+struct ext2d_bgd *ext2_req_bgdt(struct ext2 *fs, uint32_t idx);
 
 int ext2_inodepos(struct ext2 *fs, uint32_t inode);
 int ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off);
@@ -56,9 +56,6 @@ uint32_t ext2c_walk(struct ext2 *fs, const char *path, size_t plen);
 
 /* write.c */
 int ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_t off);
-
-/* requires you to manually save the directory inode + manually update link count */
 int ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target_n, int flags);
-/** Removes a directory entry. Doesn't update the link count.
- * @return the corresponding inode, 0 on failure */
+/** @return the corresponding inode, 0 on failure */
 uint32_t ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name);

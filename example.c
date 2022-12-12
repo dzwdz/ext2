@@ -77,26 +77,6 @@ splitdir(struct ext2 *fs, const char *path, char **name)
 	return n;
 }
 
-static void
-e_link(struct ext2 *fs, uint32_t dir_n, uint32_t file_n, const char *name)
-{
-	struct ext2d_inode *file = ext2_req_inode(fs, file_n);
-	if (!file) {
-		fprintf(stderr, "couldn't access inode %u\n", file_n);
-		return;
-	}
-	file->links++;
-	if (ext2_dropreq(fs, file, true) < 0) {
-		fprintf(stderr, "couldn't save inode %u\n", file_n);
-		return;
-	}
-
-	if (ext2_link(fs, dir_n, name, file_n, 0) < 0) {
-		fprintf(stderr, "couldn't create link\n");
-		return;
-	}
-}
-
 int
 main(int argc, char **argv)
 {
@@ -125,13 +105,6 @@ main(int argc, char **argv)
 	printf("sizes: block %lu, frag %lu\n", fs->block_size, fs->frag_size);
 	printf("features: opt %x, ro %x, rw %x\n", fs->super.features_optional, fs->super.features_ro, fs->super.features_rw);
 	printf("%u block group(s)\n", fs->groups);
-
-	for (unsigned i = 0; i < fs->groups; i++) {
-		printf("block group %u: bitmaps %u %u, inode table %u, free %u %u, dirs %u\n",
-			i,
-			fs->bgdt[i].block_bitmap, fs->bgdt[i].inode_bitmap, fs->bgdt[i].inode_table,
-			fs->bgdt[i].blocks_free, fs->bgdt[i].inodes_free, fs->bgdt[i].directory_amt);
-	}
 
 	printf(TREE_HEADER);
 	if (argc < 3) {
@@ -190,30 +163,21 @@ main(int argc, char **argv)
 				continue;
 			}
 
-			e_link(fs, target_n, src_n, name);
-			tree(fs, target_n, target);
+			if (ext2_link(fs, target_n, name, src_n, 0) < 0) {
+				fprintf(stderr, "couldn't create link\n");
+			} else {
+				tree(fs, target_n, target);
+			}
 		} else if (strchr(path, '-')) { /* unlink */
-			struct ext2d_inode *target;
-			uint32_t dir_n, target_n;
+			uint32_t dir_n;
 			char *name;
 			dir_n = splitdir(fs, path + 1, &name);
 			if (!dir_n) {
 				fprintf(stderr, "directory doesn't exist\n");
 				continue;
 			}
-			target_n = ext2_unlink(fs, dir_n, name);
-			if (!target_n) {
+			if (ext2_unlink(fs, dir_n, name) == 0) {
 				fprintf(stderr, "deletion failed\n");
-				continue;
-			}
-			target = ext2_req_inode(fs, target_n);
-			if (!target) {
-				fprintf(stderr, "couldn't read inode\n");
-				continue;
-			}
-			target->links--;
-			if (ext2_dropreq(fs, target, true)) {
-				fprintf(stderr, "couldn't write inode\n");
 				continue;
 			}
 		} else { /* default: show tree at path */
