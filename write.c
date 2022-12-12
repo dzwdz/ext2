@@ -1,4 +1,5 @@
 #include "ext2.h"
+#include <assert.h> // TODO use a local include instead
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,13 +57,52 @@ static int
 change_linkcnt(struct ext2 *fs, uint32_t inode_n, int d)
 {
 	struct ext2d_inode *inode = ext2_req_inode(fs, inode_n);
+	bool gone;
 	if (!inode) {
 		return -1;
 	}
 	// TODO check overflow
 	inode->links += d;
+	gone = inode->links == 0;
 	if (ext2_dropreq(fs, inode, true) < 0) {
 		return -1;
+	}
+	if (gone) { // TODO should be in its own function, if not file
+		// TODO pointless division by power of 2
+		uint32_t group = (inode_n - 1) / fs->super.inodes_per_group;
+		uint32_t idx   = (inode_n - 1) % fs->super.inodes_per_group;
+		uint32_t ib_addr;
+		{
+			struct ext2d_bgd *bgd;
+			bgd = ext2_req_bgdt(fs, group);
+			if (!bgd) {
+				return -1;
+			}
+			bgd->inodes_free++;
+			ib_addr = bgd->inode_bitmap;
+			if (ext2_dropreq(fs, bgd, true) < 0) {
+				return -1;
+			}
+		}
+		char *ib = fs->req(fs->dev, fs->block_size, fs->block_size * ib_addr);
+		if (!ib) {
+			return -1;
+		}
+		uint32_t byte = idx / 8;
+		uint8_t mask = 1 << (idx % 8);
+
+		// TODO don't overflow
+		assert(byte < fs->block_size);
+		if ((ib[byte] & mask) == 0) {
+			ext2_dropreq(fs, ib, false);
+			assert(false); // TODO handle inconsistent filesystems well
+			return -1;
+		}
+		ib[byte] &= ~mask;
+
+		if (ext2_dropreq(fs, ib, true) < 0) {
+			return -1;
+		}
 	}
 	return 0;
 }
