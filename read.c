@@ -88,6 +88,7 @@ ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev_off
 	if (block == 0) {
 		return -1;
 	}
+	// TODO doesn't this only work for the first block group?
 	*dev_off = block * fs->block_size + block_off;
 	// TODO try to return as big of a block as possible
 	*dev_len = fs->block_size - block_off;

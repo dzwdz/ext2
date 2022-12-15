@@ -54,6 +54,143 @@ ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_
 }
 
 static int
+nuke_blocks(struct ext2 *fs, uint32_t inode_n)
+{
+	struct ext2d_inode *inode = NULL;
+	struct ext2d_bgd *bgd = NULL;
+	uint32_t block;
+	uint32_t freed = 0;
+
+	// TODO indirect blocks
+	for (int i = 0; i < 12; i++) {
+		if (!inode) {
+			inode = ext2_req_inode(fs, inode_n);
+			if (!inode) return -1;
+		}
+
+		block = inode->block[i];
+		if (block == 0) continue;
+		freed++;
+		ext2_dropreq(fs, inode, false);
+		inode = NULL;
+
+		// so much boilerplate...
+		uint32_t group = (block - 1) / fs->blocks_per_group;
+		uint32_t idx   = (block - 1) % fs->blocks_per_group;
+		uint32_t ib_addr;
+		{
+			bgd = ext2_req_bgdt(fs, group);
+			if (!bgd) {
+				return -1;
+			}
+			bgd->blocks_free++;
+			ib_addr = bgd->block_bitmap;
+			if (ext2_dropreq(fs, bgd, true) < 0) {
+				return -1;
+			}
+			bgd = NULL;
+		}
+		char *ib = fs->req(fs->dev, fs->block_size, fs->block_size * ib_addr);
+		if (!ib) {
+			return -1;
+		}
+		uint32_t byte = idx / 8;
+		uint8_t mask = 1 << (idx % 8);
+		// TODO don't overflow
+		assert(byte < fs->block_size);
+
+		if ((ib[byte] & mask) == 0) {
+			ext2_dropreq(fs, ib, false);
+			assert(false); // TODO handle inconsistent filesystems well
+			return -1;
+		}
+		ib[byte] &= ~mask;
+		if (ext2_dropreq(fs, ib, true) < 0) {
+			return -1;
+		}
+	}
+
+	if (inode && fs->drop(fs->dev, inode, true) < 0) {
+		return -1;
+	}
+
+	struct ext2d_superblock *sb = ext2_req_sb(fs);
+	if (!sb) {
+		return -1;
+	}
+	sb->blocks_free += freed;
+	if (ext2_dropreq(fs, sb, true) < 0) {
+		return -1;
+	}
+
+	return 0;
+}
+
+static int
+nuke_inode(struct ext2 *fs, uint32_t inode_n)
+{
+	{
+		struct ext2d_inode *inode;
+		inode = ext2_req_inode(fs, inode_n);
+		if (!inode) {
+			return -1;
+		}
+		// TODO check linkcnt
+		// TODO curtime fn
+		inode->dtime = -1;
+		if (ext2_dropreq(fs, inode, true) < 0) {
+			return -1;
+		}
+	}
+
+	uint32_t group = (inode_n - 1) / fs->inodes_per_group;
+	uint32_t idx   = (inode_n - 1) % fs->inodes_per_group;
+	uint32_t ib_addr;
+	{
+		struct ext2d_bgd *bgd;
+		bgd = ext2_req_bgdt(fs, group);
+		if (!bgd) {
+			return -1;
+		}
+		bgd->inodes_free++;
+		ib_addr = bgd->inode_bitmap;
+		if (ext2_dropreq(fs, bgd, true) < 0) {
+			return -1;
+		}
+	}
+	char *ib = fs->req(fs->dev, fs->block_size, fs->block_size * ib_addr);
+	if (!ib) {
+		return -1;
+	}
+	uint32_t byte = idx / 8;
+	uint8_t mask = 1 << (idx % 8);
+
+	// TODO don't overflow
+	assert(byte < fs->block_size);
+
+	if ((ib[byte] & mask) == 0) {
+		ext2_dropreq(fs, ib, false);
+		assert(false); // TODO handle inconsistent filesystems well
+		return -1;
+	}
+	ib[byte] &= ~mask;
+	if (ext2_dropreq(fs, ib, true) < 0) {
+		return -1;
+	}
+
+	struct ext2d_superblock *sb = ext2_req_sb(fs);
+	if (!sb) {
+		return -1;
+	}
+	sb->inodes_free++;
+	if (ext2_dropreq(fs, sb, true) < 0) {
+		return -1;
+	}
+
+	return 0;
+}
+
+static int
 change_linkcnt(struct ext2 *fs, uint32_t inode_n, int d)
 {
 	struct ext2d_inode *inode = ext2_req_inode(fs, inode_n);
@@ -67,42 +204,14 @@ change_linkcnt(struct ext2 *fs, uint32_t inode_n, int d)
 	if (ext2_dropreq(fs, inode, true) < 0) {
 		return -1;
 	}
-	if (gone) { // TODO should be in its own function, if not file
-		// TODO pointless division by power of 2
-		uint32_t group = (inode_n - 1) / fs->inodes_per_group;
-		uint32_t idx   = (inode_n - 1) % fs->inodes_per_group;
-		uint32_t ib_addr;
-		{
-			struct ext2d_bgd *bgd;
-			bgd = ext2_req_bgdt(fs, group);
-			if (!bgd) {
-				return -1;
-			}
-			bgd->inodes_free++;
-			ib_addr = bgd->inode_bitmap;
-			if (ext2_dropreq(fs, bgd, true) < 0) {
-				return -1;
-			}
-		}
-		char *ib = fs->req(fs->dev, fs->block_size, fs->block_size * ib_addr);
-		if (!ib) {
-			return -1;
-		}
-		uint32_t byte = idx / 8;
-		uint8_t mask = 1 << (idx % 8);
-
-		// TODO don't overflow
-		assert(byte < fs->block_size);
-		if ((ib[byte] & mask) == 0) {
-			ext2_dropreq(fs, ib, false);
-			assert(false); // TODO handle inconsistent filesystems well
-			return -1;
-		}
-		ib[byte] &= ~mask;
-
-		if (ext2_dropreq(fs, ib, true) < 0) {
-			return -1;
-		}
+	if (!gone) {
+		return 0;
+	}
+	if (nuke_blocks(fs, inode_n) < 0 ||
+		nuke_inode(fs, inode_n) < 0)
+	{
+		// TODO unlinking and nuking an inode should be two separate things
+		return -1;
 	}
 	return 0;
 }
@@ -178,8 +287,9 @@ ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name)
 			ent->inode = 0;
 			if (ext2_dropreq(fs, dir, true) < 0) {
 				return -1;
+			} else if (change_linkcnt(fs, n, -1) < 0) {
+				return -1;
 			} else {
-				change_linkcnt(fs, n, -1);
 				return n;
 			}
 		}
