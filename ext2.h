@@ -61,3 +61,5 @@ int ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, s
 int ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target_n, int flags);
 /** @return the corresponding inode, 0 on failure */
 uint32_t ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name);
+/** @return the allocated inode, 0 on failure */
+uint32_t ext2_alloc_inode(struct ext2 *fs, uint16_t perms);

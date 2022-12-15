@@ -124,8 +124,23 @@ main(int argc, char **argv)
 			for (; *path == '+'; path++) count++;
 			n = ext2c_walk(fs, path, strlen(path));
 			if (!n) {
-				printf("creating files not implemented yet\n");
-				continue;
+				n = ext2_alloc_inode(fs, 0100700);
+				if (n == 0) {
+					printf("couldn't allocate inode\n");
+					continue;
+				}
+				printf("allocated inode %u\n", n);
+
+				char *name;
+				uint32_t dir_n = splitdir(fs, path, &name);
+				if (!dir_n) {
+					fprintf(stderr, "target directory doesn't exist\n");
+					continue;
+				}
+				if (ext2_link(fs, dir_n, name, n, 0) < 0) {
+					fprintf(stderr, "couldn't create link\n");
+					continue;
+				}
 			}
 
 			{
