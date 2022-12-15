@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static uint32_t ext2_default_gettime32(struct e2device *dev);
+
 struct ext2 *
 ext2_opendev(struct e2device *dev, e2device_req req_fn, e2device_drop drop_fn)
 {
@@ -16,6 +18,7 @@ ext2_opendev(struct e2device *dev, e2device_req req_fn, e2device_drop drop_fn)
 	fs->dev = dev;
 	fs->req = req_fn;
 	fs->drop = drop_fn;
+	fs->gettime32 = ext2_default_gettime32;
 
 	sb = ext2_req_sb(fs);
 	if (!sb)
@@ -60,4 +63,11 @@ ext2_free(struct ext2 *fs)
 {
 	if (!fs) return;
 	free(fs);
+}
+
+static uint32_t
+ext2_default_gettime32(struct e2device *dev)
+{
+	(void)dev;
+	return ~0;
 }

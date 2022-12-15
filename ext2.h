@@ -7,11 +7,14 @@ struct e2device; /* provided by the user */
 typedef void *(*e2device_req)(struct e2device *dev, size_t len, size_t off);
 /* 0 on success, -1 on failure to write */
 typedef int (*e2device_drop)(struct e2device *dev, void *ptr, bool dirty);
+/* mustn't return 0 */
+typedef uint32_t (*e2device_gettime32)(struct e2device *dev);
 
 struct ext2 {
 	struct e2device *dev;
 	e2device_req req;
 	e2device_drop drop;
+	e2device_gettime32 gettime32;
 
 	bool rw;
 	uint32_t groups;

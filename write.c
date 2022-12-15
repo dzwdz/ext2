@@ -136,8 +136,7 @@ nuke_inode(struct ext2 *fs, uint32_t inode_n)
 			return -1;
 		}
 		// TODO check linkcnt
-		// TODO curtime fn
-		inode->dtime = -1;
+		inode->dtime = fs->gettime32(fs->dev);
 		if (ext2_dropreq(fs, inode, true) < 0) {
 			return -1;
 		}
