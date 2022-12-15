@@ -8,13 +8,12 @@ ext2_inodepos(struct ext2 *fs, uint32_t inode)
 {
 	struct ext2d_bgd *bgd;
 	int ret = -1;
-	// TODO pointless division by power of 2
-	uint32_t group = (inode - 1) / fs->super.inodes_per_group;
-	uint32_t idx   = (inode - 1) % fs->super.inodes_per_group;
+	uint32_t group = (inode - 1) / fs->inodes_per_group;
+	uint32_t idx   = (inode - 1) % fs->inodes_per_group;
 	if (group >= fs->groups) return -1;
 	bgd = ext2_req_bgdt(fs, group);
 	if (bgd) {
-		ret = fs->block_size * bgd->inode_table + idx * fs->super.inode_size;
+		ret = fs->block_size * bgd->inode_table + idx * fs->inode_size;
 		ext2_dropreq(fs, bgd, false);
 	}
 	return ret;
@@ -61,6 +60,12 @@ ext2_req_bgdt(struct ext2 *fs, uint32_t idx)
 	if (!(idx < fs->groups)) return NULL;
 	block = fs->block_size == 1024 ? 2 : 1;
 	return fs->req(fs->dev, sizeof(struct ext2d_bgd), block * fs->block_size);
+}
+
+struct ext2d_superblock *
+ext2_req_sb(struct ext2 *fs)
+{
+	return fs->req(fs->dev, sizeof (struct ext2d_superblock), 1024);
 }
 
 int

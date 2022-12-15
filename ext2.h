@@ -13,12 +13,10 @@ struct ext2 {
 	e2device_req req;
 	e2device_drop drop;
 
-	struct ext2d_superblock super;
-
-	/* all computed from the superblock - could just be macros instead */
 	bool rw;
 	uint32_t groups;
-	uint64_t block_size, frag_size;
+	uint64_t block_size, frag_size, inode_size;
+	uint64_t inodes_per_group, blocks_per_group;
 };
 
 struct ext2_diriter {
@@ -43,6 +41,7 @@ static inline int ext2_dropreq(struct ext2 *fs, void *ptr, bool dirty) {
 struct ext2d_inode *ext2_req_inode(struct ext2 *fs, uint32_t inode_n);
 void *ext2_req_file(struct ext2 *fs, uint32_t inode_n, size_t *len, size_t off);
 struct ext2d_bgd *ext2_req_bgdt(struct ext2 *fs, uint32_t idx);
+struct ext2d_superblock *ext2_req_sb(struct ext2 *fs);
 
 int ext2_inodepos(struct ext2 *fs, uint32_t inode);
 int ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off);

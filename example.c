@@ -99,12 +99,18 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	printf("ext2 v%d.%d\n", fs->super.v_major, fs->super.v_minor);
-	printf("inodes: %u/%u free\n", fs->super.inodes_free, fs->super.inodes_total);
-	printf("state: %u, error handling: %u\n", fs->super.state, fs->super.error_handling);
+	struct ext2d_superblock *sb = ext2_req_sb(fs);
+	if (!sb) {
+		fprintf(stderr, "couldn't get superblock\n");
+		exit(1);
+	}
+	printf("ext2 v%d.%d\n", sb->v_major, sb->v_minor);
+	printf("inodes: %u/%u free\n", sb->inodes_free, sb->inodes_total);
+	printf("state: %u, error handling: %u\n", sb->state, sb->error_handling);
 	printf("sizes: block %lu, frag %lu\n", fs->block_size, fs->frag_size);
-	printf("features: opt %x, ro %x, rw %x\n", fs->super.features_optional, fs->super.features_ro, fs->super.features_rw);
+	printf("features: opt %x, ro %x, rw %x\n", sb->features_optional, sb->features_ro, sb->features_rw);
 	printf("%u block group(s)\n", fs->groups);
+	ext2_dropreq(fs, sb, false);
 
 	printf(TREE_HEADER);
 	if (argc < 3) {

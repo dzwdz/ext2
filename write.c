@@ -69,8 +69,8 @@ change_linkcnt(struct ext2 *fs, uint32_t inode_n, int d)
 	}
 	if (gone) { // TODO should be in its own function, if not file
 		// TODO pointless division by power of 2
-		uint32_t group = (inode_n - 1) / fs->super.inodes_per_group;
-		uint32_t idx   = (inode_n - 1) % fs->super.inodes_per_group;
+		uint32_t group = (inode_n - 1) / fs->inodes_per_group;
+		uint32_t idx   = (inode_n - 1) % fs->inodes_per_group;
 		uint32_t ib_addr;
 		{
 			struct ext2d_bgd *bgd;
