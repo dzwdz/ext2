@@ -53,31 +53,14 @@ ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_
 	return len;
 }
 
-
-// TODO integrate into other stuff
-/** Requests the inode bitmap for a given group. *len is purely an output parameter. */
-static void *
-ext2_req_ib(struct ext2 *fs, uint32_t group, size_t *len)
+int
+ext2i_bitmap_alloc(uint8_t *bitmap, size_t buflen, size_t bitlen, uint32_t *target)
 {
-	struct ext2d_bgd *bgd;
-	uint32_t ib_addr;
-	bgd = ext2_req_bgdt(fs, group);
-	if (!bgd) {
-		return NULL;
-	}
-	ib_addr = bgd->inode_bitmap;
-	ext2_dropreq(fs, bgd, false);
-	if (len) *len = fs->block_size;
-	return fs->req(fs->dev, fs->block_size, fs->block_size * ib_addr);
-}
-
-static int
-bitmap_findfree(uint8_t *bitmap, int len, uint32_t *target)
-{
-	for (int byte = 0; byte < len; byte++) {
+	for (size_t byte = 0; byte < buflen && byte < bitlen / 8; byte++) {
 		if (bitmap[byte] == 0xFF) continue;
-		for (int bit = 0; bit < 7; bit++) {
+		for (size_t bit = 0; bit < 7 && byte * 8 + bit < bitlen; bit++) {
 			if ((bitmap[byte] & (1 << bit)) == 0) {
+				bitmap[byte] |= 1 << bit;
 				*target = byte * 8 + bit;
 				return 0;
 			}
@@ -93,17 +76,16 @@ ext2_alloc_inode(struct ext2 *fs, uint16_t perms)
 	uint32_t group = 0;
 	uint32_t idx = 0;
 	struct ext2d_inode *inode;
-	if (!fs->rw) return -1;
+	if (!fs->rw) return 0;
 	{
-		size_t ib_len;
-		uint8_t *ib = ext2_req_ib(fs, group, &ib_len);
-		if (!ib) return 0;
-		if (bitmap_findfree(ib, ib_len, &idx) < 0) return 0;
-		if (!(idx < fs->inodes_per_group)) return 0;
-
-		assert((ib[idx / 8] & 1 << (idx % 8)) == 0);
-		ib[idx / 8] |= 1 << (idx % 8);
-
+		uint8_t *ib = ext2_req_bitmap(fs, group, Ext2Inode);
+		if (!ib) {
+			return 0;
+		}
+		if (ext2i_bitmap_alloc(ib, fs->block_size, fs->inodes_per_group, &idx) < 0) {
+			ext2_dropreq(fs, ib, false);
+			return 0;
+		}
 		if (ext2_dropreq(fs, ib, true) < 0) {
 			return 0;
 		}

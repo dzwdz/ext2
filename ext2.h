@@ -33,6 +33,11 @@ struct ext2_diriter {
 	} _internal;
 };
 
+enum ext2_bitmap {
+	Ext2Inode,
+	Ext2Block,
+};
+
 struct ext2 *ext2_opendev(struct e2device *dev, e2device_req req_fn, e2device_drop drop_fn);
 void ext2_free(struct ext2 *fs);
 
@@ -43,6 +48,7 @@ struct ext2d_inode *ext2_req_inode(struct ext2 *fs, uint32_t inode_n);
 void *ext2_req_file(struct ext2 *fs, uint32_t inode_n, size_t *len, size_t off);
 struct ext2d_bgd *ext2_req_bgdt(struct ext2 *fs, uint32_t idx);
 struct ext2d_superblock *ext2_req_sb(struct ext2 *fs);
+void *ext2_req_bitmap(struct ext2 *fs, uint32_t group, enum ext2_bitmap type);
 
 int ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off);
 bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n);
@@ -66,3 +72,4 @@ uint32_t ext2_alloc_inode(struct ext2 *fs, uint16_t perms);
  * the other interfaces aren't stable yet, but those will never be. please avoid them. */
 /* should possibly be moved into a separate header file */
 int ext2i_change_linkcnt(struct ext2 *fs, uint32_t inode_n, int d);
+int ext2i_bitmap_alloc(uint8_t *bitmap, size_t buflen, size_t bitlen, uint32_t *target);

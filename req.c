@@ -68,3 +68,21 @@ ext2_req_sb(struct ext2 *fs)
 {
 	return fs->req(fs->dev, sizeof (struct ext2d_superblock), 1024);
 }
+
+void *
+ext2_req_bitmap(struct ext2 *fs, uint32_t group, enum ext2_bitmap type)
+{
+	struct ext2d_bgd *bgd;
+	uint32_t b_addr;
+	bgd = ext2_req_bgdt(fs, group);
+	if (!bgd) {
+		return NULL;
+	}
+	if (type == Ext2Inode) {
+		b_addr = bgd->inode_bitmap;
+	} else { /* type == Ext2Block */
+		b_addr = bgd->block_bitmap;
+	}
+	ext2_dropreq(fs, bgd, false);
+	return fs->req(fs->dev, fs->block_size, fs->block_size * b_addr);
+}
