@@ -15,7 +15,8 @@ struct ext2d_superblock {
 
 	uint32_t block_first_data; /* superblock location (?), apparently can vary */
 	uint32_t block_size_log; /* block_size = 1024 << block_size_log */
-	uint32_t frag_size_log; /* same as above. TODO what's a fragment? */
+	uint32_t frag_size_log; /* frag_size = 1024 << frag_size_log */
+	/* if not using bigalloc it's == block_size, otherwise it's bigger. */
 
 	uint32_t blocks_per_group;
 	uint32_t frags_per_group;
@@ -75,7 +76,7 @@ struct ext2d_inode {
 	uint32_t dtime; /* deletion time */
 	uint16_t gid;
 	uint16_t links; /* hard links pointing to it */
-	uint32_t sectors; /* real sectors used */
+	uint32_t sectors; /* size of the already allocated blocks / 512 */
 	uint32_t flags;
 	uint32_t os_specific1;
 	uint32_t block[12];

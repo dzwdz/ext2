@@ -7,15 +7,12 @@
 int
 ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_t off)
 {
+	struct ext2d_inode *inode;
 	uint64_t dev_off, dev_len;
 	if (!fs->rw) return -1;
 
-	/* test run, see if we can access all the space */
-	for (size_t pos = 0; pos < len; ) {
-		if (ext2_inode_ondisk(fs, inode_n, off + pos, &dev_off, &dev_len) < 0) {
-			return -1;
-		}
-		pos += dev_len;
+	if (ext2_alloc_space(fs, inode_n, off + len) < 0) {
+		return -1;
 	}
 
 	/* do it for real */
@@ -38,8 +35,7 @@ ext2_write(struct ext2 *fs, uint32_t inode_n, const void *buf, size_t len, size_
 		pos += dev_len;
 	}
 
-	// TODO size64
-	struct ext2d_inode *inode = ext2_req_inode(fs, inode_n);
+	inode = ext2_req_inode(fs, inode_n);
 	if (!inode) {
 		return -1;
 	}
@@ -124,4 +120,107 @@ ext2_alloc_inode(struct ext2 *fs, uint16_t perms)
 		return 0;
 	}
 	return inode_n;
+}
+
+uint32_t
+ext2_alloc_block(struct ext2 *fs)
+{
+	uint32_t group = 0;
+	uint32_t idx = 0;
+	uint32_t block;
+	{
+		uint8_t *bitmap = ext2_req_bitmap(fs, group, Ext2Block);
+		if (!bitmap) {
+			return 0;
+		}
+		if (ext2i_bitmap_alloc(bitmap, fs->block_size, fs->blocks_per_group, &idx) < 0) {
+			ext2_dropreq(fs, bitmap, false);
+			return 0;
+		}
+		if (ext2_dropreq(fs, bitmap, true) < 0) {
+			return 0;
+		}
+		block = idx+1;
+	}
+	{
+		struct ext2d_bgd *bgd;
+		bgd = ext2_req_bgdt(fs, group);
+		if (!bgd) {
+			return 0;
+		}
+		bgd->blocks_free--;
+		if (ext2_dropreq(fs, bgd, true) < 0) {
+			return 0;
+		}
+	}
+	{
+		struct ext2d_superblock *sb;
+		sb = ext2_req_sb(fs);
+		if (!sb) {
+			return 0;
+		}
+		sb->blocks_free--;
+		if (ext2_dropreq(fs, sb, true) < 0) {
+			return 0;
+		}
+	}
+	char *b = fs->req(fs->dev, fs->block_size, block * fs->block_size);
+	if (!b) {
+		return 0;
+	}
+	memset(b, 0, fs->block_size);
+	if (ext2_dropreq(fs, b, true) < 0) {
+		return 0;
+	}
+	return block;
+}
+
+int
+ext2_alloc_space(struct ext2 *fs, uint32_t inode_n, size_t len)
+{
+	struct ext2d_inode *inode = NULL;
+	bool dirty = false;
+	if (!fs->rw) return 0;
+
+	for (uint64_t iblock = 0; iblock * fs->block_size < len; iblock++) {
+		uint64_t dblock;
+		if (!inode) {
+			inode = ext2_req_inode(fs, inode_n);
+			if (!inode) return -1;
+		}
+		if (iblock >= 12) {
+			// TODO indirect blocks
+			return -1;
+		}
+		dblock = inode->block[iblock];
+		if (dblock != 0) continue;
+		if (ext2_dropreq(fs, inode, dirty) < 0) {
+			return -1;
+		}
+		inode = NULL;
+		dirty = false;
+
+		dblock = ext2_alloc_block(fs);
+		if (dblock == 0) return -1;
+
+		inode = ext2_req_inode(fs, inode_n);
+		if (!inode) return -1;
+		inode->block[iblock] = dblock;
+		inode->sectors += fs->block_size / 512;
+		dirty = true;
+	}
+	if (inode && ext2_dropreq(fs, inode, dirty) < 0) {
+		return -1;
+	}
+
+	/* test run, see if we can access all the space */
+	// TODO remove this hack
+	for (size_t pos = 0; pos < len; ) {
+		size_t dev_off, dev_len;
+		if (ext2_inode_ondisk(fs, inode_n, pos, &dev_off, &dev_len) < 0) {
+			return -1;
+		}
+		pos += dev_len;
+	}
+	return 0;
 }

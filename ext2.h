@@ -65,7 +65,12 @@ int ext2_link(struct ext2 *fs, uint32_t dir_n, const char *name, uint32_t target
 /** @return the corresponding inode, 0 on failure */
 uint32_t ext2_unlink(struct ext2 *fs, uint32_t dir_n, const char *name);
 /** @return the allocated inode, 0 on failure */
+// TODO should probably take a group preference argument
 uint32_t ext2_alloc_inode(struct ext2 *fs, uint16_t perms);
+// TODO and this should be able to allocate runs of blocks
+uint32_t ext2_alloc_block(struct ext2 *fs);
+
+int ext2_alloc_space(struct ext2 *fs, uint32_t inode_n, size_t len);
 
 
 /* misc internal functions
