@@ -49,6 +49,7 @@ void *ext2_req_file(struct ext2 *fs, uint32_t inode_n, size_t *len, size_t off);
 struct ext2d_bgd *ext2_req_bgdt(struct ext2 *fs, uint32_t idx);
 struct ext2d_superblock *ext2_req_sb(struct ext2 *fs);
 void *ext2_req_bitmap(struct ext2 *fs, uint32_t group, enum ext2_bitmap type);
+uint32_t *ext2_req_blockmap(struct ext2 *fs, uint32_t inode_n, size_t *len, uint32_t off);
 
 int ext2_read(struct ext2 *fs, uint32_t inode_n, void *buf, size_t len, size_t off);
 bool ext2_diriter(struct ext2_diriter *iter, struct ext2 *fs, uint32_t inode_n);

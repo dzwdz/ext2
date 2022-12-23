@@ -9,22 +9,17 @@ ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev_off
 	// TODO unnecessary division by power of 2
 	uint64_t block     = pos / fs->block_size;
 	uint64_t block_off = pos % fs->block_size;
-	struct ext2d_inode *inode;
-	if (block >= 12) {
-		// TODO indirect blocks
-		return -1;
-	}
-	inode = ext2_req_inode(fs, inode_n);
-	if (!inode) {
-		return -1;
-	}
-	block = inode->block[block];
-	fs->drop(fs->dev, inode, false);
+	uint32_t *blocks;
+	size_t blocks_len;
+
+	blocks = ext2_req_blockmap(fs, inode_n, &blocks_len, block);
+	if (!blocks) return -1;
+	block = blocks[0];
+	fs->drop(fs->dev, blocks, false);
 	if (block == 0) {
 		return -1;
 	}
-	// TODO doesn't this only work for the first block group?
-	// if so, alloc_block is fucked too
+
 	*dev_off = block * fs->block_size + block_off;
 	// TODO try to return as big of a block as possible
 	*dev_len = fs->block_size - block_off;

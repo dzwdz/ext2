@@ -1,5 +1,6 @@
 /* Functions for requesting specific structures / data from the filesystem. */
 #include "ext2.h"
+#include <stddef.h>
 #include <stdlib.h>
 
 static int ext2_inodepos(struct ext2 *fs, uint32_t inode);
@@ -85,4 +86,31 @@ ext2_req_bitmap(struct ext2 *fs, uint32_t group, enum ext2_bitmap type)
 	}
 	ext2_dropreq(fs, bgd, false);
 	return fs->req(fs->dev, fs->block_size, fs->block_size * b_addr);
+}
+
+uint32_t *
+ext2_req_blockmap(struct ext2 *fs, uint32_t inode_n, size_t *len, uint32_t off)
+{
+	if (off < 12) {
+		int ioff = ext2_inodepos(fs, inode_n);
+		if (ioff < 0) return NULL;
+
+		*len = 12 - off;
+		return fs->req(fs->dev, *len * 4, ioff + offsetof(struct ext2d_inode, block) + 4 * off);
+	} else if (off - 12 < fs->block_size / 4) {
+		uint32_t indirect;
+
+		struct ext2d_inode *inode;
+		inode = ext2_req_inode(fs, inode_n);
+		if (!inode) return NULL;
+		indirect = inode->indirect_1;
+		ext2_dropreq(fs, inode, false);
+
+		if (indirect == 0) return NULL;
+		off -= 12;
+		*len = fs->block_size / 4 - off;
+		return fs->req(fs->dev, *len * 4, indirect * fs->block_size + off * 4);
+	} else {
+		return NULL;
+	}
 }
