@@ -178,38 +178,72 @@ ext2_alloc_block(struct ext2 *fs)
 int
 ext2_alloc_space(struct ext2 *fs, uint32_t inode_n, size_t len)
 {
-	struct ext2d_inode *inode = NULL;
 	bool dirty = false;
+	bool err = false;
 	if (!fs->rw) return 0;
 
+	uint32_t *iblocks = NULL;
+	size_t iblocks_off = 0;
+	size_t iblocks_len = 0;
+	uint32_t allocated = 0;
+
+	/* don't break in the middle of the block,
+	 * or the inode will be in an inconsistent state */
 	for (uint64_t iblock = 0; iblock * fs->block_size < len; iblock++) {
-		uint64_t dblock;
-		if (!inode) {
-			inode = ext2_req_inode(fs, inode_n);
-			if (!inode) return -1;
+		uint64_t dblock; /* disk block (inode block) */
+		size_t iblocks_pos = iblock - iblocks_off;
+		assert(iblocks_off <= iblock);
+
+		if (iblocks && !(iblocks_pos < iblocks_len)) {
+			ext2_dropreq(fs, iblocks, dirty);
+			iblocks = NULL;
 		}
-		if (iblock >= 12) {
-			// TODO indirect blocks
-			return -1;
+		if (iblocks == NULL) {
+			iblocks_off = iblock;
+			iblocks_pos = 0;
+			iblocks = ext2_req_blockmap(fs, inode_n, &iblocks_len, iblocks_off, true);
+			dirty = false;
+			if (iblocks == NULL) {
+				err = true;
+				break;
+			}
 		}
-		dblock = inode->block[iblock];
+
+		dblock = iblocks[iblocks_pos];
 		if (dblock != 0) continue;
-		if (ext2_dropreq(fs, inode, dirty) < 0) {
+		if (ext2_dropreq(fs, iblocks, dirty) < 0) {
 			return -1;
 		}
-		inode = NULL;
+		iblocks = NULL;
 		dirty = false;
 
 		dblock = ext2_alloc_block(fs);
 		if (dblock == 0) return -1;
 
-		inode = ext2_req_inode(fs, inode_n);
-		if (!inode) return -1;
-		inode->block[iblock] = dblock;
-		inode->sectors += fs->block_size / 512;
+		iblocks_off = iblock;
+		iblocks_pos = 0;
+		iblocks = ext2_req_blockmap(fs, inode_n, &iblocks_len, iblocks_off, true);
+		if (iblocks == NULL) {
+			err = true;
+			break;
+		}
+		iblocks[iblocks_pos] = dblock;
 		dirty = true;
+		allocated++;
 	}
-	if (inode && ext2_dropreq(fs, inode, dirty) < 0) {
+	if (iblocks && ext2_dropreq(fs, iblocks, dirty) < 0) {
+		return -1;
+	}
+
+	struct ext2d_inode *inode;
+	inode = ext2_req_inode(fs, inode_n);
+	if (!inode) return -1;
+	inode->sectors += allocated * fs->block_size / 512;
+	if (ext2_dropreq(fs, inode, true) < 0) {
+		return -1;
+	}
+
+	if (err) {
 		return -1;
 	}
 
@@ -217,9 +251,7 @@ ext2_alloc_space(struct ext2 *fs, uint32_t inode_n, size_t len)
 	// TODO remove this hack
 	for (size_t pos = 0; pos < len; ) {
 		size_t dev_off, dev_len;
-		if (ext2_inode_ondisk(fs, inode_n, pos, &dev_off, &dev_len) < 0) {
-			return -1;
-		}
+		assert(ext2_inode_ondisk(fs, inode_n, pos, &dev_off, &dev_len) >= 0);
 		pos += dev_len;
 	}
 	return 0;

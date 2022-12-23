@@ -136,7 +136,7 @@ main(int argc, char **argv)
 			}
 		}
 
-		for (int i = 0; i < count - 1; i++) {
+		for (int i = 0; i < count; i++) {
 			const char *s = "I can eat glass and it doesn't hurt me.\n";
 			if (ext2_write(fs, n, s, strlen(s), i * strlen(s)) <= 0) {
 				errx(1, "write error");

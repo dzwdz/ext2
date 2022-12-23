@@ -12,7 +12,7 @@ ext2_inode_ondisk(struct ext2 *fs, uint32_t inode_n, size_t pos, size_t *dev_off
 	uint32_t *blocks;
 	size_t blocks_len;
 
-	blocks = ext2_req_blockmap(fs, inode_n, &blocks_len, block);
+	blocks = ext2_req_blockmap(fs, inode_n, &blocks_len, block, false);
 	if (!blocks) return -1;
 	block = blocks[0];
 	fs->drop(fs->dev, blocks, false);

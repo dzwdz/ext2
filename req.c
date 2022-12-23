@@ -1,5 +1,6 @@
 /* Functions for requesting specific structures / data from the filesystem. */
 #include "ext2.h"
+#include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -89,13 +90,15 @@ ext2_req_bitmap(struct ext2 *fs, uint32_t group, enum ext2_bitmap type)
 }
 
 uint32_t *
-ext2_req_blockmap(struct ext2 *fs, uint32_t inode_n, size_t *len, uint32_t off)
+ext2_req_blockmap(struct ext2 *fs, uint32_t inode_n, size_t *len, uint32_t off, bool alloc)
 {
+	if (alloc && !fs->rw) return NULL;
 	if (off < 12) {
 		int ioff = ext2_inodepos(fs, inode_n);
 		if (ioff < 0) return NULL;
 
 		*len = 12 - off;
+		assert(*len > 0);
 		return fs->req(fs->dev, *len * 4, ioff + offsetof(struct ext2d_inode, block) + 4 * off);
 	} else if (off - 12 < fs->block_size / 4) {
 		uint32_t indirect;
@@ -106,9 +109,22 @@ ext2_req_blockmap(struct ext2 *fs, uint32_t inode_n, size_t *len, uint32_t off)
 		indirect = inode->indirect_1;
 		ext2_dropreq(fs, inode, false);
 
-		if (indirect == 0) return NULL;
+		if (indirect == 0) {
+			if (!alloc) return NULL;
+			indirect = ext2_alloc_block(fs);
+			if (indirect == 0) return NULL;
+
+			inode = ext2_req_inode(fs, inode_n);
+			if (!inode) return NULL;
+			inode->indirect_1 = indirect;
+			if (ext2_dropreq(fs, inode, true) < 0) {
+				return NULL;
+			}
+		}
+
 		off -= 12;
 		*len = fs->block_size / 4 - off;
+		assert(*len > 0);
 		return fs->req(fs->dev, *len * 4, indirect * fs->block_size + off * 4);
 	} else {
 		return NULL;
