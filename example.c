@@ -75,6 +75,32 @@ main(int argc, char **argv)
 
 	if (argc < 3) {
 		tree(fs, 2, "", true);
+	} else if (strcmp(argv[2], "read") == 0) {
+		if (argc < 3) errx(1, "usage: ./example read path");
+		const char *path = argv[3];
+		uint32_t n = ext2c_walk(fs, path, strlen(path));
+		if (n == 0) errx(1, "no such file");
+
+		size_t flen;
+		{
+			struct ext2d_inode *inode;
+			inode = ext2_req_inode(fs, n);
+			if (!inode) errx(1, "couldn't read inode %u", n);
+			flen = inode->size_lower;
+			ext2_dropreq(fs, inode, false);
+		}
+
+		for (size_t off = 0; off < flen; ) {
+			size_t len = 0;
+			char *data = ext2_req_file(fs, n, &len, off);
+			if (!data || len == 0) {
+				if (data) ext2_dropreq(fs, data, false);
+				errx(1, "read error");
+			}
+			fwrite(data, len, 1, stdout);
+			ext2_dropreq(fs, data, false);
+			off += len;
+		}
 	} else if (strcmp(argv[2], "write") == 0) {
 		if (argc < 3) errx(1, "usage: ./example write path [count]");
 		const char *path = argv[3];
